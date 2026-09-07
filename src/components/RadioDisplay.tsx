@@ -14,6 +14,8 @@ interface RadioDisplayProps {
   micVolume: number;
   speakerMuted: boolean;
   rssi?: RssiData;
+  rogerBeepEnabled?: boolean;
+  rogerBeepStyle?: string;
   onOpenParticipants: () => void;
   getAudioFrequencyData?: (outputArray: Uint8Array) => void;
   getAudioTimeDomainData?: (outputArray: Uint8Array) => void;
@@ -29,6 +31,8 @@ export const RadioDisplay: React.FC<RadioDisplayProps> = ({
   micVolume,
   speakerMuted,
   rssi,
+  rogerBeepEnabled,
+  rogerBeepStyle,
   onOpenParticipants,
   getAudioFrequencyData,
   getAudioTimeDomainData
@@ -72,6 +76,15 @@ export const RadioDisplay: React.FC<RadioDisplayProps> = ({
           {session?.pin && (
             <span className="px-1.5 py-0.5 rounded-md bg-slate-800/90 text-emerald-400 font-digital font-bold text-[11px] border border-slate-700">
               PIN {session.pin}
+            </span>
+          )}
+
+          {rogerBeepEnabled && (
+            <span
+              className="px-1.5 py-0.5 rounded-md bg-amber-950/70 border border-amber-800/60 text-amber-400 font-mono text-[9px] font-bold tracking-wider uppercase"
+              title={`Roger Beep active (${rogerBeepStyle || 'classic'})`}
+            >
+              RGR
             </span>
           )}
         </div>

@@ -16,6 +16,8 @@ interface HomeScreenProps {
   activeChannel?: number;
   onChannelChange?: (channel: number) => void;
   rssi?: RssiData;
+  rogerBeepEnabled?: boolean;
+  rogerBeepStyle?: string;
   getAudioFrequencyData?: (outputArray: Uint8Array) => void;
   getAudioTimeDomainData?: (outputArray: Uint8Array) => void;
 }
@@ -30,6 +32,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   activeChannel = 1,
   onChannelChange,
   rssi,
+  rogerBeepEnabled = true,
+  rogerBeepStyle = 'classic',
   getAudioFrequencyData,
   getAudioTimeDomainData
 }) => {
@@ -134,6 +138,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               <span className="font-semibold text-slate-300 text-[11px] tracking-wide">
                 WEBRTC DMR
               </span>
+              {rogerBeepEnabled && (
+                <span
+                  className="px-1.5 py-0.5 rounded-md bg-amber-950/70 border border-amber-800/60 text-amber-400 font-mono text-[9px] font-bold tracking-wider uppercase"
+                  title={`Roger Beep Active (${rogerBeepStyle})`}
+                >
+                  RGR
+                </span>
+              )}
             </div>
 
             {/* Battery & Online Status */}

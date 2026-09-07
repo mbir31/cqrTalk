@@ -7,7 +7,7 @@ import { ParticipantSheet } from './ParticipantSheet';
 import { BiColorStatusLed } from './BiColorStatusLed';
 import { RotaryChannelSelector } from './RotaryChannelSelector';
 import { TransmissionHistoryDrawer } from './TransmissionHistoryDrawer';
-import { SessionData, ConnectionState, TxRxState, FloorState, TransmissionRecord, RssiData } from '../types';
+import { SessionData, ConnectionState, TxRxState, FloorState, TransmissionRecord, RssiData, RogerBeepStyle } from '../types';
 
 interface CommunicationScreenProps {
   session: SessionData | null;
@@ -21,6 +21,9 @@ interface CommunicationScreenProps {
   onToggleSpeakerMute: () => void;
   soundEffects: boolean;
   onToggleSoundEffects: (enabled: boolean) => void;
+  rogerBeepEnabled?: boolean;
+  onToggleRogerBeep?: (enabled: boolean) => void;
+  rogerBeepStyle?: RogerBeepStyle;
   activeChannel: number;
   onChannelChange: (channel: number) => void;
   transmissionHistory: TransmissionRecord[];
@@ -50,6 +53,9 @@ export const CommunicationScreen: React.FC<CommunicationScreenProps> = ({
   onToggleSpeakerMute,
   soundEffects,
   onToggleSoundEffects,
+  rogerBeepEnabled = true,
+  onToggleRogerBeep,
+  rogerBeepStyle = 'classic',
   activeChannel,
   onChannelChange,
   transmissionHistory,
@@ -194,6 +200,8 @@ export const CommunicationScreen: React.FC<CommunicationScreenProps> = ({
           micVolume={micVolume}
           speakerMuted={speakerMuted}
           rssi={rssi}
+          rogerBeepEnabled={rogerBeepEnabled}
+          rogerBeepStyle={rogerBeepStyle}
           onOpenParticipants={() => setIsSheetOpen(true)}
           getAudioFrequencyData={getAudioFrequencyData}
           getAudioTimeDomainData={getAudioTimeDomainData}
@@ -243,13 +251,31 @@ export const CommunicationScreen: React.FC<CommunicationScreenProps> = ({
             </button>
 
             {/* Sound Effects Toggle Switch */}
-            <div className="p-1 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center shadow-inner">
+            <div className="p-1 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center shadow-inner" title="Master Sound Effects">
               <TactileToggle
                 id="comm-screen-sound-toggle"
                 checked={soundEffects}
                 onChange={onToggleSoundEffects}
               />
             </div>
+
+            {/* Quick Roger Beep Toggle */}
+            {onToggleRogerBeep && (
+              <button
+                id="comm-screen-roger-toggle"
+                type="button"
+                onClick={() => onToggleRogerBeep(!rogerBeepEnabled)}
+                className={`py-2 px-2.5 rounded-xl text-xs font-mono font-bold uppercase transition-all flex items-center gap-1.5 border shadow-xs cursor-pointer ${
+                  rogerBeepEnabled
+                    ? 'bg-amber-950/70 hover:bg-amber-900/70 border-amber-700/80 text-amber-300'
+                    : 'bg-slate-900/80 hover:bg-slate-800 border-slate-800 text-slate-500 hover:text-slate-300'
+                }`}
+                title={`Floor Release Roger Beep: ${rogerBeepEnabled ? `Active (${rogerBeepStyle})` : 'Disabled'} (Click to toggle)`}
+              >
+                <span className="text-[10px] tracking-wide">RGR</span>
+                <div className={`w-1.5 h-1.5 rounded-full ${rogerBeepEnabled ? 'bg-amber-400 shadow-[0_0_4px_rgba(251,191,36,0.8)]' : 'bg-slate-600'}`} />
+              </button>
+            )}
 
             {/* Leave / End Channel */}
             {isHost ? (

@@ -30,6 +30,8 @@ export interface SessionData {
   iceServers?: RTCIceServer[];
 }
 
+export type RogerBeepStyle = 'classic' | 'nasa' | 'tactical' | 'cb';
+
 export interface UserPreferences {
   displayName: string;
   soundEffectsEnabled: boolean;
@@ -38,6 +40,8 @@ export interface UserPreferences {
   hapticsEnabled?: boolean;
   rfFilterEnabled?: boolean;
   squelchTailEnabled?: boolean;
+  rogerBeepEnabled?: boolean;
+  rogerBeepStyle?: RogerBeepStyle;
   customStunTurnUrl?: string;
 }
 

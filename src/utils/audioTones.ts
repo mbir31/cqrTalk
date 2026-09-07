@@ -4,6 +4,8 @@
  * Pure Web Audio API synthesis - zero external asset dependencies, zero network delay.
  */
 
+import { RogerBeepStyle } from '../types';
+
 let audioCtx: AudioContext | null = null;
 
 function getAudioContext(): AudioContext | null {
@@ -45,36 +47,107 @@ export function playPttChirp(enabled = true) {
   osc.stop(now + 0.09);
 }
 
-export function playRogerBeep(enabled = true) {
+export function playRogerBeep(enabled = true, style: RogerBeepStyle = 'classic') {
   if (!enabled) return;
   const ctx = getAudioContext();
   if (!ctx) return;
 
   const now = ctx.currentTime;
-  
-  // First tone (1100 Hz)
-  const osc1 = ctx.createOscillator();
-  const gain1 = ctx.createGain();
-  osc1.type = 'sine';
-  osc1.frequency.setValueAtTime(1150, now);
-  gain1.gain.setValueAtTime(0.15, now);
-  gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
-  osc1.connect(gain1);
-  gain1.connect(ctx.destination);
-  osc1.start(now);
-  osc1.stop(now + 0.06);
 
-  // Second tone (1750 Hz) - classic roger beep
-  const osc2 = ctx.createOscillator();
-  const gain2 = ctx.createGain();
-  osc2.type = 'sine';
-  osc2.frequency.setValueAtTime(1780, now + 0.065);
-  gain2.gain.setValueAtTime(0.15, now + 0.065);
-  gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
-  osc2.connect(gain2);
-  gain2.connect(ctx.destination);
-  osc2.start(now + 0.065);
-  osc2.stop(now + 0.14);
+  switch (style) {
+    case 'nasa': {
+      // Apollo / NASA Quindar unkey tone (2475 Hz pure sinusoidal pulse)
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(2475, now);
+      
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.exponentialRampToValueAtTime(0.18, now + 0.015);
+      gain.gain.setValueAtTime(0.18, now + 0.18);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.22);
+      break;
+    }
+
+    case 'tactical': {
+      // Tactical Public Safety / Motorola chirp (1850 Hz chirp dropping to 1310 Hz)
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(1850, now);
+      gain1.gain.setValueAtTime(0.16, now);
+      gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.045);
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start(now);
+      osc1.stop(now + 0.045);
+
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(1310, now + 0.05);
+      gain2.gain.setValueAtTime(0.16, now + 0.05);
+      gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.start(now + 0.05);
+      osc2.stop(now + 0.12);
+      break;
+    }
+
+    case 'cb': {
+      // Classic CB radio 1520 Hz alert tone
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1520, now);
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.exponentialRampToValueAtTime(0.18, now + 0.01);
+      gain.gain.setValueAtTime(0.18, now + 0.08);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.12);
+      break;
+    }
+
+    case 'classic':
+    default: {
+      // Classic Dual-Tone (1150 Hz -> 1780 Hz)
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(1150, now);
+      gain1.gain.setValueAtTime(0.15, now);
+      gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start(now);
+      osc1.stop(now + 0.06);
+
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(1780, now + 0.065);
+      gain2.gain.setValueAtTime(0.15, now + 0.065);
+      gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.start(now + 0.065);
+      osc2.stop(now + 0.14);
+      break;
+    }
+  }
+}
+
+export function previewRogerBeep(style: RogerBeepStyle = 'classic') {
+  playRogerBeep(true, style);
 }
 
 export function playBusyTone(enabled = true) {

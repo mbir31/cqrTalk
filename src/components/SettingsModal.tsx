@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Settings, X, User, Volume2, Mic, Download, ShieldCheck, Radio, Check } from 'lucide-react';
 import { TactileToggle } from './TactileToggle';
+import { RogerBeepStyle } from '../types';
+import { previewRogerBeep } from '../utils/audioTones';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -9,6 +11,10 @@ interface SettingsModalProps {
   onSaveDisplayName: (name: string) => void;
   soundEffects: boolean;
   onToggleSoundEffects: (enabled: boolean) => void;
+  rogerBeepEnabled?: boolean;
+  onToggleRogerBeep?: (enabled: boolean) => void;
+  rogerBeepStyle?: RogerBeepStyle;
+  onChangeRogerBeepStyle?: (style: RogerBeepStyle) => void;
   hapticsEnabled?: boolean;
   onToggleHaptics?: (enabled: boolean) => void;
   rfFilterEnabled?: boolean;
@@ -26,6 +32,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onSaveDisplayName,
   soundEffects,
   onToggleSoundEffects,
+  rogerBeepEnabled = true,
+  onToggleRogerBeep,
+  rogerBeepStyle = 'classic' as RogerBeepStyle,
+  onChangeRogerBeepStyle,
   hapticsEnabled = true,
   onToggleHaptics,
   rfFilterEnabled = true,
@@ -135,10 +145,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="p-3.5 rounded-2xl bg-slate-900/60 border border-slate-800 flex items-center justify-between">
             <div className="space-y-0.5">
               <div className="text-xs font-bold text-white uppercase tracking-wider">
-                Radio Roger & Chirp Tones
+                Master Radio Tones
               </div>
               <p className="text-[11px] text-slate-400">
-                PTT squelch chirps, dual-tone roger beeps, and busy alerts.
+                PTT key chirps, incoming call chimes, and channel rotary clicks.
               </p>
             </div>
             <TactileToggle
@@ -146,6 +156,75 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               checked={soundEffects}
               onChange={onToggleSoundEffects}
             />
+          </div>
+
+          {/* Optional Roger Beep Sound Effect */}
+          <div className="p-3.5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <div className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                  <span>'Roger' Beep Confirmation</span>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 font-mono font-semibold uppercase">
+                    Half-Duplex
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Acoustic tone played upon releasing the floor, signaling over-to-listen.
+                </p>
+              </div>
+              <TactileToggle
+                id="settings-roger-beep-toggle"
+                checked={rogerBeepEnabled}
+                onChange={(checked) => onToggleRogerBeep?.(checked)}
+              />
+            </div>
+
+            {rogerBeepEnabled && (
+              <div className="pt-2.5 border-t border-slate-800/80 space-y-2">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-slate-300 font-medium">Tone Acoustic Style</span>
+                  <button
+                    type="button"
+                    onClick={() => previewRogerBeep(rogerBeepStyle)}
+                    className="flex items-center gap-1 text-[11px] text-amber-400 hover:text-amber-300 bg-amber-950/50 hover:bg-amber-950/80 border border-amber-800/70 px-2 py-0.5 rounded-lg transition-colors cursor-pointer"
+                  >
+                    <Volume2 className="w-3 h-3" />
+                    <span>Test Beep</span>
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {[
+                    { id: 'classic', label: 'Classic Dual', desc: '1150/1780 Hz DMR' },
+                    { id: 'nasa', label: 'NASA Quindar', desc: '2475 Hz Apollo' },
+                    { id: 'tactical', label: 'Tactical MDC', desc: '1850/1310 Hz Chirp' },
+                    { id: 'cb', label: 'CB Radio', desc: '1520 Hz Single' }
+                  ].map((style) => {
+                    const isSelected = rogerBeepStyle === style.id;
+                    return (
+                      <button
+                        key={style.id}
+                        type="button"
+                        onClick={() => {
+                          onChangeRogerBeepStyle?.(style.id as RogerBeepStyle);
+                          previewRogerBeep(style.id as RogerBeepStyle);
+                        }}
+                        className={`text-left p-2 rounded-xl border transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-amber-950/50 border-amber-600/80 text-white shadow-xs'
+                            : 'bg-slate-950/40 border-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold">{style.label}</span>
+                          {isSelected && <Check className="w-3 h-3 text-amber-400" />}
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-mono mt-0.5">{style.desc}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Squelch Tail Noise Burst */}

@@ -19,6 +19,10 @@ export default function App() {
     setRfFilterEnabled,
     squelchTailEnabled,
     setSquelchTailEnabled,
+    rogerBeepEnabled,
+    setRogerBeepEnabled,
+    rogerBeepStyle,
+    setRogerBeepStyle,
     activeChannel,
     setActiveChannel,
     transmissionHistory,
@@ -103,6 +107,9 @@ export default function App() {
           onToggleSpeakerMute={toggleSpeakerMute}
           soundEffects={soundEffects}
           onToggleSoundEffects={setSoundEffects}
+          rogerBeepEnabled={rogerBeepEnabled}
+          onToggleRogerBeep={setRogerBeepEnabled}
+          rogerBeepStyle={rogerBeepStyle}
           activeChannel={activeChannel}
           onChannelChange={setActiveChannel}
           transmissionHistory={transmissionHistory}
@@ -129,6 +136,8 @@ export default function App() {
           activeChannel={activeChannel}
           onChannelChange={setActiveChannel}
           rssi={rssi}
+          rogerBeepEnabled={rogerBeepEnabled}
+          rogerBeepStyle={rogerBeepStyle}
           getAudioFrequencyData={getAudioFrequencyData}
           getAudioTimeDomainData={getAudioTimeDomainData}
         />
@@ -164,6 +173,10 @@ export default function App() {
           onSaveDisplayName={setDisplayName}
           soundEffects={soundEffects}
           onToggleSoundEffects={setSoundEffects}
+          rogerBeepEnabled={rogerBeepEnabled}
+          onToggleRogerBeep={setRogerBeepEnabled}
+          rogerBeepStyle={rogerBeepStyle}
+          onChangeRogerBeepStyle={setRogerBeepStyle}
           hapticsEnabled={hapticsEnabled}
           onToggleHaptics={setHapticsEnabled}
           rfFilterEnabled={rfFilterEnabled}

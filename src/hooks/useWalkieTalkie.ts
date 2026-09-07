@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { SessionData, Participant, FloorState, TxRxState, ConnectionState, TransmissionRecord, RssiData } from '../types';
+import { SessionData, Participant, FloorState, TxRxState, ConnectionState, TransmissionRecord, RssiData, RogerBeepStyle } from '../types';
 import { MediaEngine } from '../services/mediaEngine';
 import {
   playPttChirp,
@@ -26,6 +26,8 @@ const LOCAL_STORAGE_PID_KEY = 'cqrtalk_participant_id';
 const LOCAL_STORAGE_HAPTICS_KEY = 'cqrtalk_haptics_enabled';
 const LOCAL_STORAGE_RF_FILTER_KEY = 'cqrtalk_rf_filter_enabled';
 const LOCAL_STORAGE_SQUELCH_KEY = 'cqrtalk_squelch_tail_enabled';
+const LOCAL_STORAGE_ROGER_BEEP_KEY = 'cqrtalk_roger_beep_enabled';
+const LOCAL_STORAGE_ROGER_STYLE_KEY = 'cqrtalk_roger_beep_style';
 const LOCAL_STORAGE_CHANNEL_KEY = 'cqrtalk_active_channel';
 
 function computeRssi(latencyMs: number, isConnected: boolean): RssiData {
@@ -104,6 +106,16 @@ export function useWalkieTalkie() {
     return saved !== null ? saved === 'true' : true;
   });
 
+  const [rogerBeepEnabled, setRogerBeepEnabledState] = useState<boolean>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_ROGER_BEEP_KEY);
+    return saved !== null ? saved === 'true' : true;
+  });
+
+  const [rogerBeepStyle, setRogerBeepStyleState] = useState<RogerBeepStyle>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_ROGER_STYLE_KEY) as RogerBeepStyle;
+    return ['classic', 'nasa', 'tactical', 'cb'].includes(saved) ? saved : 'classic';
+  });
+
   const [activeChannel, setActiveChannelState] = useState<number>(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_CHANNEL_KEY);
     const num = saved ? parseInt(saved, 10) : 1;
@@ -152,6 +164,15 @@ export function useWalkieTalkie() {
   const shouldReconnectRef = useRef<boolean>(false);
   const activeSessionIdRef = useRef<string | null>(null);
 
+  const soundEffectsRef = useRef(soundEffects);
+  soundEffectsRef.current = soundEffects;
+  const squelchTailEnabledRef = useRef(squelchTailEnabled);
+  squelchTailEnabledRef.current = squelchTailEnabled;
+  const rogerBeepEnabledRef = useRef(rogerBeepEnabled);
+  rogerBeepEnabledRef.current = rogerBeepEnabled;
+  const rogerBeepStyleRef = useRef(rogerBeepStyle);
+  rogerBeepStyleRef.current = rogerBeepStyle;
+
   const setDisplayName = useCallback((name: string) => {
     const clean = name.trim().slice(0, 24) || 'Operator';
     setDisplayNameState(clean);
@@ -180,6 +201,16 @@ export function useWalkieTalkie() {
   const setSquelchTailEnabled = useCallback((enabled: boolean) => {
     setSquelchTailEnabledState(enabled);
     localStorage.setItem(LOCAL_STORAGE_SQUELCH_KEY, String(enabled));
+  }, []);
+
+  const setRogerBeepEnabled = useCallback((enabled: boolean) => {
+    setRogerBeepEnabledState(enabled);
+    localStorage.setItem(LOCAL_STORAGE_ROGER_BEEP_KEY, String(enabled));
+  }, []);
+
+  const setRogerBeepStyle = useCallback((style: RogerBeepStyle) => {
+    setRogerBeepStyleState(style);
+    localStorage.setItem(LOCAL_STORAGE_ROGER_STYLE_KEY, style);
   }, []);
 
   const setActiveChannel = useCallback((ch: number) => {
@@ -503,17 +534,21 @@ export function useWalkieTalkie() {
               // Floor is free
               recordTransmissionEnd();
               if (txRxState === 'TRANSMITTING') {
-                playRogerBeep(soundEffects);
-                if (squelchTailEnabled) {
-                  playSquelchTail(soundEffects);
+                if (rogerBeepEnabledRef.current) {
+                  playRogerBeep(soundEffectsRef.current, rogerBeepStyleRef.current);
+                }
+                if (squelchTailEnabledRef.current) {
+                  playSquelchTail(soundEffectsRef.current);
                 }
                 if (mediaEngineRef.current) {
                   mediaEngineRef.current.stopTransmitting();
                 }
               } else if (txRxState === 'RECEIVING') {
-                playRogerBeep(soundEffects);
-                if (squelchTailEnabled) {
-                  playSquelchTail(soundEffects);
+                if (rogerBeepEnabledRef.current) {
+                  playRogerBeep(soundEffectsRef.current, rogerBeepStyleRef.current);
+                }
+                if (squelchTailEnabledRef.current) {
+                  playSquelchTail(soundEffectsRef.current);
                 }
               }
               setTxRxState('IDLE');
@@ -686,14 +721,16 @@ export function useWalkieTalkie() {
       }
       if (txRxState === 'TRANSMITTING') {
         recordTransmissionEnd();
-        playRogerBeep(soundEffects);
+        if (rogerBeepEnabled) {
+          playRogerBeep(soundEffects, rogerBeepStyle);
+        }
         if (squelchTailEnabled) {
           playSquelchTail(soundEffects);
         }
       }
       setTxRxState('IDLE');
     }
-  }, [txRxState, sendWs, participantId, soundEffects, squelchTailEnabled, recordTransmissionEnd]);
+  }, [txRxState, sendWs, participantId, soundEffects, rogerBeepEnabled, rogerBeepStyle, squelchTailEnabled, recordTransmissionEnd]);
 
   // Secondary Toggle Start/Stop Transmission
   const toggleFloor = useCallback(() => {
@@ -743,6 +780,10 @@ export function useWalkieTalkie() {
     setRfFilterEnabled,
     squelchTailEnabled,
     setSquelchTailEnabled,
+    rogerBeepEnabled,
+    setRogerBeepEnabled,
+    rogerBeepStyle,
+    setRogerBeepStyle,
     activeChannel,
     setActiveChannel,
     transmissionHistory,
