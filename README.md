@@ -157,13 +157,30 @@ The app is live and hosted on Vercel:
 4. **Production Build**:
    ```bash
    npm run build
-   npm run start
+   npm run start   # serves dist/ + API on http://localhost:3000
    ```
 
-### Deploy to Vercel / Cloud Run
-The repository is optimized for one-click deployment:
+5. **Protocol smoke test** (run against a live server):
+   ```bash
+   PORT=3199 OFFLINE_NOTIFY_DELAY_MS=800 npx tsx server.ts &
+   node scripts/smoke.mjs http://localhost:3199
+   ```
+
+### Server Configuration (environment variables)
+| Variable | Default | Purpose |
+| :--- | :--- | :--- |
+| `PORT` | `3000` | HTTP/WebSocket listen port |
+| `TRUST_PROXY` | `false` | Set `true` behind Vercel/Cloud Run/Fly/nginx so rate limits key on real client IPs |
+| `TURN_URL` | *(empty)* | Comma-separated `turn:` URLs — **required for reliable calls across symmetric NATs / strict firewalls** |
+| `TURN_USERNAME` / `TURN_CREDENTIAL` | *(empty)* | TURN credentials (prefer short-lived) |
+| `OFFLINE_NOTIFY_DELAY_MS` | `4000` | Grace period before peers are shown offline after a disconnect |
+| `NODE_ENV` | — | `production` selects static serving; the production bundle bakes it in |
+
+### Deploy to a long-running host (Cloud Run / Fly.io / Render / VM)
+The repository is optimized for deployment:
 - **Client SPA**: Builds to `dist/` with Vite and Tailwind CSS.
 - **Full-Stack Bundle**: Compiles `server.ts` into a self-contained `dist/server.cjs` with `esbuild`.
+- **Important**: floor arbitration and signaling require a *long-running* process — plain serverless functions (e.g. stock Vercel functions) cannot host persistent WebSockets. Deploy to a host that supports WebSockets (Cloud Run, Fly.io, Render web services, Railway, or any VM), set `TRUST_PROXY=true`, and configure a TURN server for production-grade NAT traversal.
 
 ---
 

@@ -30,6 +30,10 @@ const LOCAL_STORAGE_ROGER_BEEP_KEY = 'cqrtalk_roger_beep_enabled';
 const LOCAL_STORAGE_ROGER_STYLE_KEY = 'cqrtalk_roger_beep_style';
 const LOCAL_STORAGE_CHANNEL_KEY = 'cqrtalk_active_channel';
 
+const RECONNECT_BASE_DELAY_MS = 1000;
+const RECONNECT_MAX_DELAY_MS = 30_000;
+const REQUEST_TIMEOUT_MS = 4000;
+
 function computeRssi(latencyMs: number, isConnected: boolean): RssiData {
   if (!isConnected) {
     return {
@@ -155,15 +159,24 @@ export function useWalkieTalkie() {
     sUnit: 'S9+10'
   });
 
+  // ---------------------------------------------------------------------------
+  // Refs — the single source of truth for anything socket handlers read, so the
+  // WebSocket lifecycle is never coupled to frequently-changing React state.
+  // ---------------------------------------------------------------------------
   const wsRef = useRef<WebSocket | null>(null);
+  const socketGenerationRef = useRef<number>(0);
   const mediaEngineRef = useRef<MediaEngine | null>(null);
   const pingIntervalRef = useRef<number | null>(null);
   const fluctuationIntervalRef = useRef<number | null>(null);
   const volumeIntervalRef = useRef<number | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
-  const shouldReconnectRef = useRef<boolean>(false);
+  const reconnectFailuresRef = useRef<number>(0);
+  const shouldReconnectRef = useRef<boolean>(true);
   const activeSessionIdRef = useRef<string | null>(null);
+  const pendingHostTokenRef = useRef<string | null>(null);
 
+  const displayNameRef = useRef(displayName);
+  displayNameRef.current = displayName;
   const soundEffectsRef = useRef(soundEffects);
   soundEffectsRef.current = soundEffects;
   const squelchTailEnabledRef = useRef(squelchTailEnabled);
@@ -172,7 +185,27 @@ export function useWalkieTalkie() {
   rogerBeepEnabledRef.current = rogerBeepEnabled;
   const rogerBeepStyleRef = useRef(rogerBeepStyle);
   rogerBeepStyleRef.current = rogerBeepStyle;
+  const rfFilterEnabledRef = useRef(rfFilterEnabled);
+  rfFilterEnabledRef.current = rfFilterEnabled;
+  const txRxStateRef = useRef<TxRxState>('IDLE');
+  const floorRef = useRef<FloorState>({
+    currentSpeakerId: null,
+    currentSpeakerName: null,
+    grantedAt: null,
+    leaseExpiresAt: null
+  });
+  /** True while the operator's floor_request is awaiting the server answer. */
+  const pttRequestPendingRef = useRef<boolean>(false);
 
+  /** Set TX/RX state and keep its ref mirror in sync. */
+  const setTxState = useCallback((next: TxRxState) => {
+    txRxStateRef.current = next;
+    setTxRxState(next);
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // Setters (persist + mirror into engines)
+  // ---------------------------------------------------------------------------
   const setDisplayName = useCallback((name: string) => {
     const clean = name.trim().slice(0, 24) || 'Operator';
     setDisplayNameState(clean);
@@ -217,9 +250,9 @@ export function useWalkieTalkie() {
     const validCh = Math.max(1, Math.min(16, ch));
     setActiveChannelState(validCh);
     localStorage.setItem(LOCAL_STORAGE_CHANNEL_KEY, String(validCh));
-    playRotaryClick(soundEffects);
+    playRotaryClick(soundEffectsRef.current);
     hapticRotaryClick();
-  }, [soundEffects]);
+  }, []);
 
   const toggleSpeakerMute = useCallback(() => {
     setSpeakerMuted(prev => {
@@ -248,14 +281,517 @@ export function useWalkieTalkie() {
     }
   }, []);
 
-  // Send message via WebSocket safely
+  /** Send message via WebSocket safely. */
   const sendWs = useCallback((msg: any) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(msg));
+      try {
+        wsRef.current.send(JSON.stringify(msg));
+      } catch (err) {
+        // Socket died mid-send; the close handler will reconnect
+      }
     }
   }, []);
 
-  // Initialize Media Engine
+  /** Clear all timers owned by the current socket. */
+  const clearSocketTimers = useCallback(() => {
+    if (pingIntervalRef.current) {
+      clearInterval(pingIntervalRef.current);
+      pingIntervalRef.current = null;
+    }
+    if (fluctuationIntervalRef.current) {
+      clearInterval(fluctuationIntervalRef.current);
+      fluctuationIntervalRef.current = null;
+    }
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+  }, []);
+
+  /** Leave the current session (keeps the background carrier socket). */
+  const leaveSession = useCallback(() => {
+    activeSessionIdRef.current = null;
+    pttRequestPendingRef.current = false;
+    shouldReconnectRef.current = true; // keep the background carrier alive
+
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      try {
+        wsRef.current.send(JSON.stringify({ type: 'leave' }));
+      } catch (err) {
+        // Ignore
+      }
+    }
+
+    if (mediaEngineRef.current) {
+      mediaEngineRef.current.stopTransmitting();
+      mediaEngineRef.current.cleanup();
+    }
+
+    currentTransmissionRef.current = null;
+    setSession(null);
+    setTxState('IDLE');
+    const emptyFloor: FloorState = {
+      currentSpeakerId: null,
+      currentSpeakerName: null,
+      grantedAt: null,
+      leaseExpiresAt: null
+    };
+    floorRef.current = emptyFloor;
+    setFloor(emptyFloor);
+  }, [setTxState]);
+
+  /**
+   * WebSocket connection logic — STABLE identity. All state read inside the
+   * socket handlers goes through refs, so the socket is never rebuilt on state
+   * changes (previously every PTT press tore the session down).
+   */
+  const connectWebSocket = useCallback((targetSessionId?: string | null) => {
+    // Cancel timers owned by any previous socket first
+    clearSocketTimers();
+
+    const generation = ++socketGenerationRef.current;
+    activeSessionIdRef.current = targetSessionId || null;
+
+    // Detach & close any previous socket without letting its handlers fire
+    const previous = wsRef.current;
+    if (previous) {
+      previous.onopen = null;
+      previous.onmessage = null;
+      previous.onclose = null;
+      previous.onerror = null;
+      try {
+        previous.close();
+      } catch (err) {
+        // Ignore
+      }
+      wsRef.current = null;
+    }
+
+    setConnectionState('CONNECTING');
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
+
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(wsUrl);
+    } catch (err) {
+      setConnectionState('DISCONNECTED');
+      return;
+    }
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      if (socketGenerationRef.current !== generation) return;
+      reconnectFailuresRef.current = 0;
+      setConnectionState('CONNECTED');
+      setErrorMessage(null);
+
+      // Immediately send a ping with client timestamp for instant latency measurement
+      ws.send(JSON.stringify({ type: 'ping', clientTime: Date.now() }));
+
+      // Join the session if targeting one
+      const sessionId = activeSessionIdRef.current;
+      if (sessionId) {
+        playConnectChime(soundEffectsRef.current);
+        const hostToken = pendingHostTokenRef.current;
+        pendingHostTokenRef.current = null;
+        ws.send(JSON.stringify({
+          type: 'join',
+          sessionId,
+          participantId,
+          displayName: displayNameRef.current,
+          ...(hostToken ? { hostToken } : {})
+        }));
+      }
+
+      // Ping WebSocket every 2000ms for continuous real WebSocket RTT tracking
+      clearSocketTimers();
+      pingIntervalRef.current = window.setInterval(() => {
+        if (wsRef.current === ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'ping', clientTime: Date.now() }));
+        }
+      }, 2000);
+
+      // Micro-fluctuation drift interval (every 800ms) simulating natural RF carrier breathing
+      fluctuationIntervalRef.current = window.setInterval(() => {
+        setRssi(prev => {
+          if (wsRef.current !== ws || ws.readyState !== WebSocket.OPEN) return prev;
+          const drift = (Math.random() - 0.5) * 3;
+          const nextLatency = Math.max(6, Math.round(prev.latencyMs + drift));
+          return computeRssi(nextLatency, true);
+        });
+      }, 800);
+    };
+
+    ws.onmessage = (event) => {
+      if (socketGenerationRef.current !== generation) return;
+      try {
+        const msg = JSON.parse(event.data);
+
+        switch (msg.type) {
+          case 'pong': {
+            if (msg.clientTime) {
+              const rtt = Math.max(1, Date.now() - msg.clientTime);
+              setRssi(computeRssi(rtt, true));
+            }
+            break;
+          }
+          case 'session_state': {
+            const data: SessionData = msg.session;
+            setSession(data);
+            floorRef.current = data.floor || floorRef.current;
+            setFloor(floorRef.current);
+
+            if (data.iceServers && mediaEngineRef.current) {
+              mediaEngineRef.current.setIceServers(data.iceServers);
+            }
+
+            // Initiate WebRTC peer connections with existing online participants
+            if (mediaEngineRef.current) {
+              for (const peer of data.participants) {
+                if (peer.participantId !== participantId && peer.isOnline) {
+                  // The user with lexically greater ID initiates offer to avoid collision
+                  const shouldOffer = participantId > peer.participantId;
+                  mediaEngineRef.current.createOrGetPeerConnection(peer.participantId, shouldOffer);
+                }
+              }
+            }
+
+            // Restore coherent TX/RX presentation (e.g. another operator is mid-broadcast)
+            const speaker = floorRef.current.currentSpeakerId;
+            if (speaker && speaker !== participantId) {
+              if (txRxStateRef.current !== 'RECEIVING') {
+                setTxState('RECEIVING');
+                currentTransmissionRef.current = {
+                  id: Math.random().toString(36).substring(2, 9),
+                  speakerId: speaker,
+                  speakerName: floorRef.current.currentSpeakerName || 'Radio Operator',
+                  startedAt: Date.now(),
+                  wasSelf: false
+                };
+              }
+            } else if (txRxStateRef.current === 'REQUESTING' || txRxStateRef.current === 'TRANSMITTING') {
+              // A reconnect means the server released our previous floor grant
+              pttRequestPendingRef.current = false;
+              if (mediaEngineRef.current) {
+                mediaEngineRef.current.stopTransmitting();
+              }
+              setTxState('IDLE');
+            }
+            break;
+          }
+
+          case 'participant_joined': {
+            const newParticipant: Participant = msg.participant;
+            setSession(prev => {
+              if (!prev) return prev;
+              const exists = prev.participants.some(p => p.participantId === newParticipant.participantId);
+              const updatedList = exists
+                ? prev.participants.map(p => p.participantId === newParticipant.participantId ? newParticipant : p)
+                : [...prev.participants, newParticipant];
+              return { ...prev, participants: updatedList };
+            });
+
+            // Connect WebRTC with newly joined / re-joined peer
+            if (mediaEngineRef.current && newParticipant.participantId !== participantId) {
+              const shouldOffer = participantId > newParticipant.participantId;
+              mediaEngineRef.current.createOrGetPeerConnection(newParticipant.participantId, shouldOffer);
+            }
+            break;
+          }
+
+          case 'participant_left': {
+            const leftId = msg.participantId;
+            setSession(prev => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                participants: prev.participants.filter(p => p.participantId !== leftId)
+              };
+            });
+            if (mediaEngineRef.current) {
+              mediaEngineRef.current.removePeer(leftId);
+            }
+            break;
+          }
+
+          case 'participant_status': {
+            const { participantId: targetId, isOnline } = msg;
+            setSession(prev => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                participants: prev.participants.map(p =>
+                  p.participantId === targetId ? { ...p, isOnline } : p
+                )
+              };
+            });
+            break;
+          }
+
+          case 'host_transferred': {
+            const newHostId = msg.newHostParticipantId || '';
+            setSession(prev => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                hostParticipantId: newHostId,
+                participants: prev.participants.map(p => ({
+                  ...p,
+                  isHost: p.participantId === newHostId
+                }))
+              };
+            });
+            break;
+          }
+
+          case 'floor_granted': {
+            if (pttRequestPendingRef.current) {
+              pttRequestPendingRef.current = false;
+              setTxState('TRANSMITTING');
+              playPttChirp(soundEffectsRef.current);
+              hapticFloorGranted();
+              currentTransmissionRef.current = {
+                id: Math.random().toString(36).substring(2, 9),
+                speakerId: participantId,
+                speakerName: displayNameRef.current,
+                startedAt: Date.now(),
+                wasSelf: true
+              };
+              if (mediaEngineRef.current) {
+                mediaEngineRef.current.startTransmitting();
+              }
+            } else {
+              // Stale grant (operator already released PTT) — release the floor again
+              sendWs({ type: 'floor_release', participantId });
+            }
+            break;
+          }
+
+          case 'floor_denied': {
+            pttRequestPendingRef.current = false;
+            setTxState('BUSY');
+            playBusyTone(soundEffectsRef.current);
+            hapticFloorDenied();
+            window.setTimeout(() => {
+              if (txRxStateRef.current === 'BUSY') {
+                setTxState('IDLE');
+              }
+            }, 1200);
+            break;
+          }
+
+          case 'floor_updated': {
+            const updatedFloor: FloorState = msg.floor || floorRef.current;
+            floorRef.current = updatedFloor;
+            setFloor(updatedFloor);
+
+            const prevState = txRxStateRef.current;
+            const speakerId = updatedFloor.currentSpeakerId;
+
+            if (speakerId) {
+              if (speakerId === participantId) {
+                // We hold the floor
+                if (prevState !== 'TRANSMITTING') {
+                  if (!pttRequestPendingRef.current) {
+                    // Floor assigned to us without an active local request —
+                    // do not open the mic; ask the server to release it.
+                    sendWs({ type: 'floor_release', participantId });
+                    setTxState('IDLE');
+                  } else {
+                    pttRequestPendingRef.current = false;
+                    setTxState('TRANSMITTING');
+                    playPttChirp(soundEffectsRef.current);
+                    hapticFloorGranted();
+                    currentTransmissionRef.current = {
+                      id: Math.random().toString(36).substring(2, 9),
+                      speakerId: participantId,
+                      speakerName: displayNameRef.current,
+                      startedAt: Date.now(),
+                      wasSelf: true
+                    };
+                    if (mediaEngineRef.current) {
+                      mediaEngineRef.current.startTransmitting();
+                    }
+                  }
+                }
+              } else {
+                // Another operator took the floor
+                if (prevState === 'TRANSMITTING' || prevState === 'REQUESTING') {
+                  // We lost it (lease takeover / pre-emption) — cut the mic immediately
+                  pttRequestPendingRef.current = false;
+                  if (mediaEngineRef.current) {
+                    mediaEngineRef.current.stopTransmitting();
+                  }
+                  recordTransmissionEnd();
+                  if (rogerBeepEnabledRef.current) {
+                    playRogerBeep(soundEffectsRef.current, rogerBeepStyleRef.current);
+                  }
+                  if (squelchTailEnabledRef.current) {
+                    playSquelchTail(soundEffectsRef.current);
+                  }
+                }
+                if (prevState !== 'RECEIVING') {
+                  setTxState('RECEIVING');
+                  playIncomingCue(soundEffectsRef.current);
+                  hapticFloorGranted();
+                  currentTransmissionRef.current = {
+                    id: Math.random().toString(36).substring(2, 9),
+                    speakerId: speakerId,
+                    speakerName: updatedFloor.currentSpeakerName || 'Radio Operator',
+                    startedAt: Date.now(),
+                    wasSelf: false
+                  };
+                }
+              }
+            } else {
+              // Floor is free
+              const endedActive = prevState === 'TRANSMITTING' || prevState === 'RECEIVING';
+              if (endedActive) {
+                recordTransmissionEnd();
+                if (rogerBeepEnabledRef.current) {
+                  playRogerBeep(soundEffectsRef.current, rogerBeepStyleRef.current);
+                }
+                if (squelchTailEnabledRef.current) {
+                  playSquelchTail(soundEffectsRef.current);
+                }
+              }
+              if (prevState === 'TRANSMITTING' && mediaEngineRef.current) {
+                mediaEngineRef.current.stopTransmitting();
+              }
+              pttRequestPendingRef.current = false;
+              if (prevState !== 'REQUESTING') {
+                setTxState('IDLE');
+              }
+            }
+            break;
+          }
+
+          case 'signal': {
+            if (mediaEngineRef.current) {
+              mediaEngineRef.current.handleRemoteSignal(msg.fromParticipantId, msg.signal);
+            }
+            break;
+          }
+
+          case 'removed_by_host': {
+            setErrorMessage(msg.message || 'You were removed from this channel by the host.');
+            leaveSession();
+            break;
+          }
+
+          case 'session_ended': {
+            setErrorMessage(msg.message || 'This channel has been closed.');
+            leaveSession();
+            break;
+          }
+
+          case 'error': {
+            const terminalCodes = ['SESSION_NOT_FOUND', 'SESSION_EXPIRED', 'SESSION_FULL', 'INVALID_JOIN'];
+            if (terminalCodes.includes(msg.code)) {
+              // The session we were in (or tried to join) no longer accepts us —
+              // drop back to the home screen with a clear explanation.
+              setErrorMessage(msg.message || 'Radio error encountered.');
+              leaveSession();
+            } else {
+              setErrorMessage(msg.message || 'Radio error encountered.');
+            }
+            break;
+          }
+        }
+      } catch (e) {
+        console.error('Error handling ws message:', e);
+      }
+    };
+
+    ws.onclose = () => {
+      if (socketGenerationRef.current !== generation) return;
+
+      clearSocketTimers();
+      setRssi(computeRssi(0, false));
+
+      if (shouldReconnectRef.current && typeof navigator !== 'undefined' && navigator.onLine === false) {
+        // Wait for the 'online' event instead of burning retries
+        setConnectionState(activeSessionIdRef.current ? 'RECONNECTING' : 'DISCONNECTED');
+        return;
+      }
+
+      const hasSession = !!activeSessionIdRef.current;
+      if (shouldReconnectRef.current) {
+        setConnectionState(hasSession ? 'RECONNECTING' : 'DISCONNECTED');
+        if (hasSession) {
+          playDisconnectChime(soundEffectsRef.current);
+        }
+
+        // Exponential backoff: 1s -> 1.7s -> 2.9s -> ... capped at 30s
+        const failures = reconnectFailuresRef.current;
+        const delay = Math.min(
+          RECONNECT_MAX_DELAY_MS,
+          RECONNECT_BASE_DELAY_MS * Math.pow(1.7, failures)
+        );
+        reconnectFailuresRef.current = failures + 1;
+
+        reconnectTimeoutRef.current = window.setTimeout(() => {
+          reconnectTimeoutRef.current = null;
+          if (shouldReconnectRef.current) {
+            connectWebSocket(activeSessionIdRef.current);
+          }
+        }, delay);
+      } else {
+        setConnectionState('DISCONNECTED');
+      }
+    };
+
+    ws.onerror = () => {
+      // ws.onclose handles reconnect
+    };
+  }, [participantId, sendWs, clearSocketTimers, leaveSession, setTxState, setRssi]);
+
+  // Maintain background carrier connection on load
+  useEffect(() => {
+    shouldReconnectRef.current = true;
+    connectWebSocket(activeSessionIdRef.current);
+
+    const handleOnline = () => {
+      shouldReconnectRef.current = true;
+      connectWebSocket(activeSessionIdRef.current);
+    };
+    const handleOffline = () => {
+      setConnectionState('DISCONNECTED');
+      setRssi(computeRssi(0, false));
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      shouldReconnectRef.current = false;
+      clearSocketTimers();
+      if (wsRef.current) {
+        const closing = wsRef.current;
+        closing.onopen = null;
+        closing.onmessage = null;
+        closing.onclose = null;
+        closing.onerror = null;
+        try {
+          closing.close();
+        } catch (err) {
+          // Ignore
+        }
+        wsRef.current = null;
+      }
+    };
+  }, [connectWebSocket, clearSocketTimers]);
+
+  // Initialize Media Engine (once)
   useEffect(() => {
     const engine = new MediaEngine({
       onSignal: (targetId, signal) => {
@@ -271,12 +807,19 @@ export function useWalkieTalkie() {
     });
 
     engine.setLocalParticipantId(participantId);
+    engine.setRfFilterEnabled(rfFilterEnabledRef.current);
     mediaEngineRef.current = engine;
 
     return () => {
       engine.cleanup();
+      mediaEngineRef.current = null;
     };
   }, [participantId, sendWs]);
+
+  // Sync engine module state with persisted settings at boot
+  useEffect(() => {
+    setHapticsEngineEnabled(hapticsEnabled);
+  }, [hapticsEnabled]);
 
   // Handle speaker mute change on media engine
   useEffect(() => {
@@ -316,11 +859,12 @@ export function useWalkieTalkie() {
         const remaining = Math.max(0, Math.ceil((floor.leaseExpiresAt! - Date.now()) / 1000));
         setLeaseSecondsLeft(remaining);
         if (remaining <= 0) {
-          // Release locally
+          // Release locally — the server lease ticker broadcasts shortly after
           if (mediaEngineRef.current) {
             mediaEngineRef.current.stopTransmitting();
           }
-          setTxRxState('IDLE');
+          pttRequestPendingRef.current = false;
+          setTxState('IDLE');
         }
       };
       updateLease();
@@ -329,314 +873,24 @@ export function useWalkieTalkie() {
     } else {
       setLeaseSecondsLeft(0);
     }
-  }, [floor.leaseExpiresAt, txRxState]);
+  }, [floor.leaseExpiresAt, txRxState, setTxState]);
 
-  // WebSocket Connection Logic
-  const connectWebSocket = useCallback((targetSessionId?: string | null) => {
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-
-    activeSessionIdRef.current = targetSessionId || null;
-    shouldReconnectRef.current = true;
-    setConnectionState('CONNECTING');
-
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
-
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      setConnectionState('CONNECTED');
-      setErrorMessage(null);
-
-      // Immediately send a ping with client timestamp for instant latency measurement
-      ws.send(JSON.stringify({ type: 'ping', clientTime: Date.now() }));
-
-      // Join the session if targeting one
-      if (targetSessionId) {
-        playConnectChime(soundEffects);
-        ws.send(JSON.stringify({
-          type: 'join',
-          sessionId: targetSessionId,
-          participantId,
-          displayName
-        }));
-      }
-
-      // Ping WebSocket every 2000ms for continuous real WebSocket RTT tracking
-      if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
-      pingIntervalRef.current = window.setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'ping', clientTime: Date.now() }));
-        }
-      }, 2000);
-
-      // Micro-fluctuation drift interval (every 800ms) simulating natural RF carrier breathing
-      if (fluctuationIntervalRef.current) clearInterval(fluctuationIntervalRef.current);
-      fluctuationIntervalRef.current = window.setInterval(() => {
-        setRssi(prev => {
-          if (ws.readyState !== WebSocket.OPEN) return prev;
-          const drift = (Math.random() - 0.5) * 3;
-          const nextLatency = Math.max(6, Math.round(prev.latencyMs + drift));
-          return computeRssi(nextLatency, true);
-        });
-      }, 800);
-    };
-
-    ws.onmessage = async (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-
-        switch (msg.type) {
-          case 'pong': {
-            if (msg.clientTime) {
-              const rtt = Math.max(1, Date.now() - msg.clientTime);
-              setRssi(computeRssi(rtt, true));
-            }
-            break;
-          }
-          case 'session_state': {
-            const data: SessionData = msg.session;
-            setSession(data);
-            setFloor(data.floor);
-
-            if (data.iceServers && mediaEngineRef.current) {
-              mediaEngineRef.current.setIceServers(data.iceServers);
-            }
-
-            // Initiate WebRTC peer connections with existing online participants
-            if (mediaEngineRef.current) {
-              for (const peer of data.participants) {
-                if (peer.participantId !== participantId && peer.isOnline) {
-                  // The user with lexically greater ID initiates offer to avoid collision
-                  const shouldOffer = participantId > peer.participantId;
-                  mediaEngineRef.current.createOrGetPeerConnection(peer.participantId, shouldOffer);
-                }
-              }
-            }
-            break;
-          }
-
-          case 'participant_joined': {
-            const newParticipant: Participant = msg.participant;
-            setSession(prev => {
-              if (!prev) return prev;
-              const exists = prev.participants.some(p => p.participantId === newParticipant.participantId);
-              const updatedList = exists
-                ? prev.participants.map(p => p.participantId === newParticipant.participantId ? newParticipant : p)
-                : [...prev.participants, newParticipant];
-              return { ...prev, participants: updatedList };
-            });
-
-            // Connect WebRTC with newly joined peer
-            if (mediaEngineRef.current && newParticipant.participantId !== participantId) {
-              const shouldOffer = participantId > newParticipant.participantId;
-              mediaEngineRef.current.createOrGetPeerConnection(newParticipant.participantId, shouldOffer);
-            }
-            break;
-          }
-
-          case 'participant_left': {
-            const leftId = msg.participantId;
-            setSession(prev => {
-              if (!prev) return prev;
-              return {
-                ...prev,
-                participants: prev.participants.filter(p => p.participantId !== leftId)
-              };
-            });
-            if (mediaEngineRef.current) {
-              mediaEngineRef.current.removePeer(leftId);
-            }
-            break;
-          }
-
-          case 'participant_status': {
-            const { participantId: targetId, isOnline } = msg;
-            setSession(prev => {
-              if (!prev) return prev;
-              return {
-                ...prev,
-                participants: prev.participants.map(p =>
-                  p.participantId === targetId ? { ...p, isOnline } : p
-                )
-              };
-            });
-            break;
-          }
-
-          case 'host_transferred': {
-            const newHostId = msg.newHostParticipantId;
-            setSession(prev => {
-              if (!prev) return prev;
-              return {
-                ...prev,
-                hostParticipantId: newHostId,
-                participants: prev.participants.map(p => ({
-                  ...p,
-                  isHost: p.participantId === newHostId
-                }))
-              };
-            });
-            break;
-          }
-
-          case 'floor_granted': {
-            setTxRxState('TRANSMITTING');
-            playPttChirp(soundEffects);
-            hapticFloorGranted();
-            currentTransmissionRef.current = {
-              id: Math.random().toString(36).substring(2, 9),
-              speakerId: participantId,
-              speakerName: displayName,
-              startedAt: Date.now(),
-              wasSelf: true
-            };
-            if (mediaEngineRef.current) {
-              mediaEngineRef.current.startTransmitting();
-            }
-            break;
-          }
-
-          case 'floor_denied': {
-            setTxRxState('BUSY');
-            playBusyTone(soundEffects);
-            hapticFloorDenied();
-            setTimeout(() => {
-              setTxRxState(prev => prev === 'BUSY' ? 'IDLE' : prev);
-            }, 1200);
-            break;
-          }
-
-          case 'floor_updated': {
-            const updatedFloor: FloorState = msg.floor;
-            setFloor(updatedFloor);
-
-            if (updatedFloor.currentSpeakerId) {
-              if (updatedFloor.currentSpeakerId === participantId) {
-                setTxRxState('TRANSMITTING');
-              } else {
-                setTxRxState('RECEIVING');
-                playIncomingCue(soundEffects);
-                hapticFloorGranted();
-                currentTransmissionRef.current = {
-                  id: Math.random().toString(36).substring(2, 9),
-                  speakerId: updatedFloor.currentSpeakerId,
-                  speakerName: updatedFloor.currentSpeakerName || 'Radio Operator',
-                  startedAt: Date.now(),
-                  wasSelf: false
-                };
-              }
-            } else {
-              // Floor is free
-              recordTransmissionEnd();
-              if (txRxState === 'TRANSMITTING') {
-                if (rogerBeepEnabledRef.current) {
-                  playRogerBeep(soundEffectsRef.current, rogerBeepStyleRef.current);
-                }
-                if (squelchTailEnabledRef.current) {
-                  playSquelchTail(soundEffectsRef.current);
-                }
-                if (mediaEngineRef.current) {
-                  mediaEngineRef.current.stopTransmitting();
-                }
-              } else if (txRxState === 'RECEIVING') {
-                if (rogerBeepEnabledRef.current) {
-                  playRogerBeep(soundEffectsRef.current, rogerBeepStyleRef.current);
-                }
-                if (squelchTailEnabledRef.current) {
-                  playSquelchTail(soundEffectsRef.current);
-                }
-              }
-              setTxRxState('IDLE');
-            }
-            break;
-          }
-
-          case 'signal': {
-            if (mediaEngineRef.current) {
-              mediaEngineRef.current.handleRemoteSignal(msg.fromParticipantId, msg.signal);
-            }
-            break;
-          }
-
-          case 'removed_by_host': {
-            setErrorMessage('You were removed from this channel by the host.');
-            leaveSession();
-            break;
-          }
-
-          case 'session_ended': {
-            setErrorMessage(msg.message || 'This channel has been closed.');
-            leaveSession();
-            break;
-          }
-
-          case 'error': {
-            setErrorMessage(msg.message || 'Radio error encountered.');
-            break;
-          }
-        }
-      } catch (e) {
-        console.error('Error handling ws message:', e);
-      }
-    };
-
-    ws.onclose = () => {
-      if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
-      if (fluctuationIntervalRef.current) clearInterval(fluctuationIntervalRef.current);
-      setRssi(computeRssi(0, false));
-
-      if (shouldReconnectRef.current && activeSessionIdRef.current) {
-        setConnectionState('RECONNECTING');
-        playDisconnectChime(soundEffects);
-        // Automatic reconnection attempt after 2 seconds
-        reconnectTimeoutRef.current = window.setTimeout(() => {
-          if (shouldReconnectRef.current && activeSessionIdRef.current) {
-            connectWebSocket(activeSessionIdRef.current);
-          }
-        }, 2000);
-      } else {
-        setConnectionState('DISCONNECTED');
-      }
-    };
-
-    ws.onerror = () => {
-      // ws.onclose handles reconnect
-    };
-  }, [participantId, displayName, soundEffects, txRxState]);
-
-  // Maintain background carrier connection on load
+  // PTT request timeout: never leave the operator stuck in REQUESTING
   useEffect(() => {
-    connectWebSocket(null);
+    if (txRxState === 'REQUESTING') {
+      const timer = window.setTimeout(() => {
+        if (txRxStateRef.current === 'REQUESTING') {
+          pttRequestPendingRef.current = false;
+          setTxState('IDLE');
+          setErrorMessage('No response from the channel server. Please try again.');
+        }
+      }, REQUEST_TIMEOUT_MS);
+      return () => clearTimeout(timer);
+    }
+  }, [txRxState, setTxState]);
 
-    const handleOnline = () => {
-      connectWebSocket(activeSessionIdRef.current);
-    };
-    const handleOffline = () => {
-      setConnectionState('DISCONNECTED');
-      setRssi(computeRssi(0, false));
-    };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-      if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
-      if (fluctuationIntervalRef.current) clearInterval(fluctuationIntervalRef.current);
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-    };
-  }, [connectWebSocket]);
-
-  // Start joining or creating session
-  const joinSession = useCallback(async (sessionId: string) => {
+  // Join an existing session (optionally as the token-verified creator/host)
+  const joinSession = useCallback(async (sessionId: string, hostToken?: string) => {
     setErrorMessage(null);
     try {
       // Preemptively acquire mic access
@@ -648,70 +902,72 @@ export function useWalkieTalkie() {
       return false;
     }
 
-    activeSessionIdRef.current = sessionId;
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+    if (hostToken) {
+      pendingHostTokenRef.current = hostToken;
+    }
+
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      activeSessionIdRef.current = sessionId;
       setConnectionState('CONNECTED');
-      playConnectChime(soundEffects);
-      wsRef.current.send(JSON.stringify({
-        type: 'join',
-        sessionId,
-        participantId,
-        displayName
-      }));
+      playConnectChime(soundEffectsRef.current);
+      pendingHostTokenRef.current = null;
+      try {
+        ws.send(JSON.stringify({
+          type: 'join',
+          sessionId,
+          participantId,
+          displayName: displayNameRef.current,
+          ...(hostToken ? { hostToken } : {})
+        }));
+      } catch (err) {
+        // Socket died — fall through to a fresh connection
+        connectWebSocket(sessionId);
+      }
     } else {
       connectWebSocket(sessionId);
     }
     return true;
-  }, [connectWebSocket, displayName, participantId, soundEffects]);
-
-  // Leave session
-  const leaveSession = useCallback(() => {
-    activeSessionIdRef.current = null;
-
-    if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'leave' }));
-    }
-
-    if (mediaEngineRef.current) {
-      mediaEngineRef.current.stopTransmitting();
-      mediaEngineRef.current.cleanup();
-    }
-
-    setSession(null);
-    setTxRxState('IDLE');
-    setFloor({
-      currentSpeakerId: null,
-      currentSpeakerName: null,
-      grantedAt: null,
-      leaseExpiresAt: null
-    });
-  }, []);
+  }, [connectWebSocket, participantId]);
 
   // Floor Control: Request PTT Floor
   const requestFloor = useCallback(() => {
     hapticPttPress();
-    if (connectionState !== 'CONNECTED') return;
-    if (floor.currentSpeakerId && floor.currentSpeakerId !== participantId) {
-      setTxRxState('BUSY');
-      playBusyTone(soundEffects);
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    if (txRxStateRef.current === 'TRANSMITTING') return;
+
+    const currentFloor = floorRef.current;
+    if (currentFloor.currentSpeakerId && currentFloor.currentSpeakerId !== participantId) {
+      if (txRxStateRef.current !== 'BUSY') {
+        setTxState('BUSY');
+      }
+      playBusyTone(soundEffectsRef.current);
       hapticFloorDenied();
-      setTimeout(() => setTxRxState('IDLE'), 1000);
+      window.setTimeout(() => {
+        if (txRxStateRef.current === 'BUSY') {
+          setTxState('IDLE');
+        }
+      }, 1200);
       return;
     }
 
-    setTxRxState('REQUESTING');
+    if (mediaEngineRef.current) {
+      mediaEngineRef.current.unlockAudio();
+    }
+    pttRequestPendingRef.current = true;
+    setTxState('REQUESTING');
     sendWs({
       type: 'floor_request',
       participantId
     });
-  }, [connectionState, floor.currentSpeakerId, participantId, sendWs, soundEffects]);
+  }, [participantId, sendWs, setTxState]);
 
   // Floor Control: Release PTT Floor
   const releaseFloor = useCallback(() => {
     hapticPttRelease();
-    if (txRxState === 'TRANSMITTING' || txRxState === 'REQUESTING') {
+    const state = txRxStateRef.current;
+    if (state === 'TRANSMITTING' || state === 'REQUESTING') {
+      pttRequestPendingRef.current = false;
       sendWs({
         type: 'floor_release',
         participantId
@@ -719,27 +975,27 @@ export function useWalkieTalkie() {
       if (mediaEngineRef.current) {
         mediaEngineRef.current.stopTransmitting();
       }
-      if (txRxState === 'TRANSMITTING') {
+      if (state === 'TRANSMITTING') {
         recordTransmissionEnd();
-        if (rogerBeepEnabled) {
-          playRogerBeep(soundEffects, rogerBeepStyle);
+        if (rogerBeepEnabledRef.current) {
+          playRogerBeep(soundEffectsRef.current, rogerBeepStyleRef.current);
         }
-        if (squelchTailEnabled) {
-          playSquelchTail(soundEffects);
+        if (squelchTailEnabledRef.current) {
+          playSquelchTail(soundEffectsRef.current);
         }
       }
-      setTxRxState('IDLE');
+      setTxState('IDLE');
     }
-  }, [txRxState, sendWs, participantId, soundEffects, rogerBeepEnabled, rogerBeepStyle, squelchTailEnabled, recordTransmissionEnd]);
+  }, [participantId, recordTransmissionEnd, sendWs, setTxState]);
 
   // Secondary Toggle Start/Stop Transmission
   const toggleFloor = useCallback(() => {
-    if (txRxState === 'TRANSMITTING') {
+    if (txRxStateRef.current === 'TRANSMITTING') {
       releaseFloor();
     } else {
       requestFloor();
     }
-  }, [txRxState, releaseFloor, requestFloor]);
+  }, [releaseFloor, requestFloor]);
 
   // Host Action: Remove Participant
   const removeParticipant = useCallback((targetParticipantId: string) => {

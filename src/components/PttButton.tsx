@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Mic, Radio, Lock } from 'lucide-react';
 import { TxRxState, ConnectionState } from '../types';
 
@@ -20,67 +20,102 @@ export const PttButton: React.FC<PttButtonProps> = ({
   disabled = false
 }) => {
   const [isPressing, setIsPressing] = useState(false);
+  const pressingRef = useRef(false);
   const isTransmitting = txRxState === 'TRANSMITTING';
   const isReceiving = txRxState === 'RECEIVING';
   const isBusy = txRxState === 'BUSY';
   const isRequesting = txRxState === 'REQUESTING';
   const isConnected = connectionState === 'CONNECTED';
 
-  // Global release safety
+  // Keep a ref mirror so global release handlers never go stale
+  const setPressing = (value: boolean) => {
+    pressingRef.current = value;
+    setIsPressing(value);
+  };
+
+  const releasePtt = () => {
+    if (pressingRef.current) {
+      setPressing(false);
+      onReleaseFloor();
+    }
+  };
+
+  // Global release safety (mouse up outside, touch cancel, window blur,
+  // and page hide — e.g. Alt-Tab while holding Space/PTT must never stick TX)
   useEffect(() => {
-    const handleGlobalRelease = () => {
-      if (isPressing) {
-        setIsPressing(false);
-        onReleaseFloor();
+    const handleGlobalRelease = () => releasePtt();
+    const handleVisibility = () => {
+      if (document.visibilityState !== 'visible') {
+        releasePtt();
       }
     };
 
     window.addEventListener('mouseup', handleGlobalRelease);
     window.addEventListener('touchend', handleGlobalRelease);
     window.addEventListener('touchcancel', handleGlobalRelease);
+    window.addEventListener('pointercancel', handleGlobalRelease);
+    window.addEventListener('blur', handleGlobalRelease);
+    document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
       window.removeEventListener('mouseup', handleGlobalRelease);
       window.removeEventListener('touchend', handleGlobalRelease);
       window.removeEventListener('touchcancel', handleGlobalRelease);
+      window.removeEventListener('pointercancel', handleGlobalRelease);
+      window.removeEventListener('blur', handleGlobalRelease);
+      document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [isPressing, onReleaseFloor]);
+  }, [onReleaseFloor]);
 
   const handlePointerDown = (e: React.PointerEvent) => {
     if (disabled || !isConnected || isReceiving || isBusy) return;
+    if (pressingRef.current) return; // multi-touch guard: one active finger only
     e.preventDefault();
-    setIsPressing(true);
+    try {
+      (e.target as Element).setPointerCapture?.(e.pointerId);
+    } catch (err) {
+      // Pointer capture unsupported — global release listeners still protect us
+    }
+    setPressing(true);
     onRequestFloor();
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
     if (disabled) return;
     e.preventDefault();
-    if (isPressing) {
-      setIsPressing(false);
-      onReleaseFloor();
-    }
+    releasePtt();
   };
 
-  // Spacebar to talk
+  // Spacebar to talk (never hijack focused interactive elements)
   useEffect(() => {
+    const isTypingTarget = (el: Element | null) => {
+      if (!el) return false;
+      const tag = el.tagName;
+      return (
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT' ||
+        tag === 'BUTTON' ||
+        (el as HTMLElement).isContentEditable
+      );
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code === 'Space' && !e.repeat && document.activeElement?.tagName !== 'INPUT') {
-        if (!disabled && isConnected && !isReceiving && !isBusy && !isPressing) {
+      if (e.code === 'Space' && !e.repeat && !isTypingTarget(document.activeElement)) {
+        if (!disabled && isConnected && !isReceiving && !isBusy && !pressingRef.current) {
           e.preventDefault();
-          setIsPressing(true);
+          setPressing(true);
           onRequestFloor();
         }
       }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.code === 'Space' && document.activeElement?.tagName !== 'INPUT') {
-        if (isPressing) {
-          e.preventDefault();
-          setIsPressing(false);
-          onReleaseFloor();
-        }
+      // Always release on key-up — even if focus moved to a text field while
+      // the key was held (a missed release would stick TX until lease expiry).
+      if (e.code === 'Space' && pressingRef.current) {
+        e.preventDefault();
+        releasePtt();
       }
     };
 
@@ -91,7 +126,7 @@ export const PttButton: React.FC<PttButtonProps> = ({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [disabled, isConnected, isReceiving, isBusy, isPressing, onRequestFloor, onReleaseFloor]);
+  }, [disabled, isConnected, isReceiving, isBusy, onRequestFloor, onReleaseFloor]);
 
   return (
     <div className="flex flex-col items-center gap-3 select-none w-full max-w-[280px]">

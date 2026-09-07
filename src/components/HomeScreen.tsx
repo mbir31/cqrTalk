@@ -1,5 +1,5 @@
 import React from 'react';
-import { Radio, Users, Hash, Settings, Wifi, WifiOff, Battery, Volume2, ShieldCheck, Sparkles } from 'lucide-react';
+import { Radio, Users, Hash, Settings, Wifi, WifiOff, Battery, Volume2, ShieldCheck, Sparkles, AlertTriangle } from 'lucide-react';
 import { AudioFrequencyVisualizer } from './AudioFrequencyVisualizer';
 import { BiColorStatusLed } from './BiColorStatusLed';
 import { RotaryChannelSelector } from './RotaryChannelSelector';
@@ -18,6 +18,8 @@ interface HomeScreenProps {
   rssi?: RssiData;
   rogerBeepEnabled?: boolean;
   rogerBeepStyle?: string;
+  errorMessage?: string | null;
+  onClearError?: () => void;
   getAudioFrequencyData?: (outputArray: Uint8Array) => void;
   getAudioTimeDomainData?: (outputArray: Uint8Array) => void;
 }
@@ -34,12 +36,30 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   rssi,
   rogerBeepEnabled = true,
   rogerBeepStyle = 'classic',
+  errorMessage,
+  onClearError,
   getAudioFrequencyData,
   getAudioTimeDomainData
 }) => {
   return (
     <div className="flex-1 flex flex-col items-center justify-center w-full max-w-md mx-auto px-2 py-1 select-none">
-      
+      {/* Error notification banner (kicked / session ended / join rejected) */}
+      {errorMessage && (
+        <div className="w-full max-w-md mb-2 p-3 rounded-2xl bg-rose-950/80 border border-rose-800 text-rose-300 text-xs flex items-center justify-between gap-2 shadow-lg z-20">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+            <span>{errorMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={onClearError}
+            className="px-2 py-0.5 rounded-lg bg-rose-800 hover:bg-rose-700 text-white font-semibold text-[11px] cursor-pointer"
+          >
+            OK
+          </button>
+        </div>
+      )}
+
       {/* Top Physical Hardware Accents (Antenna, Bi-Color LED, Brand Plate, Channel Dial & Settings Knob) */}
       <div className="w-full flex items-end justify-between px-4 sm:px-6 -mb-1 z-10">
         {/* Rubberized Walkie Antenna + Bi-Color Status LED Jewel */}

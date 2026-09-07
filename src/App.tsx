@@ -77,13 +77,20 @@ export default function App() {
       setInitialJoinPin(pin);
       setIsJoinModalOpen(true);
     } else if (sessionId) {
-      joinSession(sessionId);
+      // Re-attach the creator token if this tab created the session earlier
+      let hostToken: string | undefined;
+      try {
+        hostToken = sessionStorage.getItem(`cqrtalk_host_token_${sessionId}`) || undefined;
+      } catch (err) {
+        // Storage unavailable
+      }
+      joinSession(sessionId, hostToken);
     }
   }, [joinSession]);
 
-  const handleSessionCreated = (sessionId: string) => {
+  const handleSessionCreated = (sessionId: string, hostToken?: string) => {
     setCreateModalType(null);
-    joinSession(sessionId);
+    joinSession(sessionId, hostToken);
   };
 
   const handleJoinFromPin = (sessionId: string) => {
@@ -138,6 +145,8 @@ export default function App() {
           rssi={rssi}
           rogerBeepEnabled={rogerBeepEnabled}
           rogerBeepStyle={rogerBeepStyle}
+          errorMessage={errorMessage}
+          onClearError={() => setErrorMessage(null)}
           getAudioFrequencyData={getAudioFrequencyData}
           getAudioTimeDomainData={getAudioTimeDomainData}
         />

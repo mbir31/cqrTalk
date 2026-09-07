@@ -7,7 +7,7 @@ interface CreateSessionModalProps {
   onClose: () => void;
   type: SessionType;
   displayName: string;
-  onSessionCreated: (sessionId: string) => void;
+  onSessionCreated: (sessionId: string, hostToken?: string) => void;
 }
 
 export const CreateSessionModal: React.FC<CreateSessionModalProps> = ({
@@ -20,7 +20,7 @@ export const CreateSessionModal: React.FC<CreateSessionModalProps> = ({
   const [operatorName, setOperatorName] = useState(displayName);
   const [groupName, setGroupName] = useState(type === 'group' ? 'Walkie-Talkie Group' : '');
   const [isCreating, setIsCreating] = useState(false);
-  const [createdSession, setCreatedSession] = useState<{ sessionId: string; pin: string; groupName: string } | null>(null);
+  const [createdSession, setCreatedSession] = useState<{ sessionId: string; pin: string; groupName: string; hostToken?: string } | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedPin, setCopiedPin] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +48,14 @@ export const CreateSessionModal: React.FC<CreateSessionModalProps> = ({
       }
 
       const data = await res.json();
+      if (data?.sessionId && data?.hostToken) {
+        // Persist the creator token for this tab so a reload keeps host rights
+        try {
+          sessionStorage.setItem(`cqrtalk_host_token_${data.sessionId}`, data.hostToken);
+        } catch (err) {
+          // Storage unavailable — token still flows in-memory via onSessionCreated
+        }
+      }
       setCreatedSession(data);
     } catch (err: any) {
       setError(err.message || 'Error creating session');
@@ -92,7 +100,7 @@ export const CreateSessionModal: React.FC<CreateSessionModalProps> = ({
 
   const handleEnterRadio = () => {
     if (createdSession) {
-      onSessionCreated(createdSession.sessionId);
+      onSessionCreated(createdSession.sessionId, createdSession.hostToken);
     }
   };
 
