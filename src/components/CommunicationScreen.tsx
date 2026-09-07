@@ -36,6 +36,8 @@ interface CommunicationScreenProps {
   onRemoveParticipant: (id: string) => void;
   errorMessage: string | null;
   onClearError: () => void;
+  micPermissionDenied?: boolean;
+  onRequestMicPermission?: () => void;
   rssi?: RssiData;
   getAudioFrequencyData?: (outputArray: Uint8Array) => void;
   getAudioTimeDomainData?: (outputArray: Uint8Array) => void;
@@ -68,6 +70,8 @@ export const CommunicationScreen: React.FC<CommunicationScreenProps> = ({
   onRemoveParticipant,
   errorMessage,
   onClearError,
+  micPermissionDenied = false,
+  onRequestMicPermission,
   rssi,
   getAudioFrequencyData,
   getAudioTimeDomainData
@@ -186,6 +190,25 @@ export const CommunicationScreen: React.FC<CommunicationScreenProps> = ({
             >
               OK
             </button>
+          </div>
+        )}
+
+        {/* Microphone status advisory banner */}
+        {micPermissionDenied && (
+          <div className="p-3 rounded-xl bg-amber-950/70 border border-amber-800/80 text-amber-200 text-xs flex items-center justify-between gap-2 shadow-lg shrink-0">
+            <div className="flex items-center gap-2">
+              <Volume2 className="w-4 h-4 shrink-0 text-amber-400" />
+              <span>Microphone in listen standby.</span>
+            </div>
+            {onRequestMicPermission && (
+              <button
+                type="button"
+                onClick={onRequestMicPermission}
+                className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] uppercase transition-all shadow-sm cursor-pointer whitespace-nowrap"
+              >
+                Enable Mic
+              </button>
+            )}
           </div>
         )}
 

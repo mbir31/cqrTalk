@@ -20,6 +20,8 @@ interface HomeScreenProps {
   rogerBeepStyle?: string;
   errorMessage?: string | null;
   onClearError?: () => void;
+  micPermissionDenied?: boolean;
+  onRequestMicPermission?: () => void;
   getAudioFrequencyData?: (outputArray: Uint8Array) => void;
   getAudioTimeDomainData?: (outputArray: Uint8Array) => void;
 }
@@ -38,6 +40,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   rogerBeepStyle = 'classic',
   errorMessage,
   onClearError,
+  micPermissionDenied = false,
+  onRequestMicPermission,
   getAudioFrequencyData,
   getAudioTimeDomainData
 }) => {
@@ -57,6 +61,25 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           >
             OK
           </button>
+        </div>
+      )}
+
+      {/* Microphone status advisory banner if permission was previously denied/blocked */}
+      {micPermissionDenied && (
+        <div className="w-full max-w-md mb-2 p-3 rounded-2xl bg-amber-950/70 border border-amber-800/80 text-amber-200 text-xs flex items-center justify-between gap-2 shadow-lg z-20">
+          <div className="flex items-center gap-2">
+            <Volume2 className="w-4 h-4 shrink-0 text-amber-400" />
+            <span>Microphone is in listen-only standby.</span>
+          </div>
+          {onRequestMicPermission && (
+            <button
+              type="button"
+              onClick={onRequestMicPermission}
+              className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] uppercase transition-all shadow-sm cursor-pointer whitespace-nowrap"
+            >
+              Enable Mic
+            </button>
+          )}
         </div>
       )}
 

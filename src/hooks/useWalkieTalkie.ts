@@ -149,6 +149,7 @@ export function useWalkieTalkie() {
     leaseExpiresAt: null
   });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [micPermissionDenied, setMicPermissionDenied] = useState<boolean>(false);
   const [leaseSecondsLeft, setLeaseSecondsLeft] = useState<number>(0);
   const [micVolume, setMicVolume] = useState<number>(0);
 
@@ -881,17 +882,32 @@ export function useWalkieTalkie() {
     }
   }, [txRxState, setTxState]);
 
+  // Request or re-request microphone permission with user gesture
+  const requestMicrophonePermission = useCallback(async (): Promise<boolean> => {
+    if (!mediaEngineRef.current) return false;
+    try {
+      await mediaEngineRef.current.acquireMicrophone(true);
+      setMicPermissionDenied(false);
+      setErrorMessage(null);
+      return true;
+    } catch (err: any) {
+      setMicPermissionDenied(true);
+      return false;
+    }
+  }, []);
+
   // Join an existing session (optionally as the token-verified creator/host)
   const joinSession = useCallback(async (sessionId: string, hostToken?: string) => {
     setErrorMessage(null);
     try {
-      // Preemptively acquire mic access
+      // Preemptively acquire mic access if possible
       if (mediaEngineRef.current) {
-        await mediaEngineRef.current.acquireMicrophone();
+        await mediaEngineRef.current.acquireMicrophone(false);
+        setMicPermissionDenied(false);
       }
     } catch (err: any) {
-      setErrorMessage('Microphone access is required for Push-to-Talk voice.');
-      return false;
+      console.warn('Microphone permission not granted yet, connecting in standby/listen mode:', err);
+      setMicPermissionDenied(true);
     }
 
     if (hostToken) {
@@ -1044,6 +1060,8 @@ export function useWalkieTalkie() {
     floor,
     errorMessage,
     setErrorMessage,
+    micPermissionDenied,
+    requestMicrophonePermission,
     leaseSecondsLeft,
     micVolume,
     joinSession,

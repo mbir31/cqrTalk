@@ -36,6 +36,8 @@ export default function App() {
     floor,
     errorMessage,
     setErrorMessage,
+    micPermissionDenied,
+    requestMicrophonePermission,
     leaseSecondsLeft,
     micVolume,
     joinSession,
@@ -128,6 +130,8 @@ export default function App() {
           onRemoveParticipant={removeParticipant}
           errorMessage={errorMessage}
           onClearError={() => setErrorMessage(null)}
+          micPermissionDenied={micPermissionDenied}
+          onRequestMicPermission={requestMicrophonePermission}
           rssi={rssi}
           getAudioFrequencyData={getAudioFrequencyData}
           getAudioTimeDomainData={getAudioTimeDomainData}
@@ -147,6 +151,8 @@ export default function App() {
           rogerBeepStyle={rogerBeepStyle}
           errorMessage={errorMessage}
           onClearError={() => setErrorMessage(null)}
+          micPermissionDenied={micPermissionDenied}
+          onRequestMicPermission={requestMicrophonePermission}
           getAudioFrequencyData={getAudioFrequencyData}
           getAudioTimeDomainData={getAudioTimeDomainData}
         />
