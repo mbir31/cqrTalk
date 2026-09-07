@@ -126,6 +126,20 @@ export const RssiIndicator: React.FC<RssiIndicatorProps> = ({
             </div>
 
             <div className="flex justify-between items-center text-slate-300">
+              <span className="text-slate-400 font-sans text-[10px]">Packet Loss:</span>
+              <span className="font-bold text-slate-200">
+                {isConnected ? `${rssi.packetLossPct ?? 0}%` : '---'}
+              </span>
+            </div>
+
+            <div className="flex justify-between items-center text-slate-300">
+              <span className="text-slate-400 font-sans text-[10px]">Audio Jitter:</span>
+              <span className="font-bold text-slate-200">
+                {isConnected ? `${rssi.jitterMs ?? 2} ms` : '---'}
+              </span>
+            </div>
+
+            <div className="flex justify-between items-center text-slate-300">
               <span className="text-slate-400 font-sans text-[10px]">Signal Level:</span>
               <span className="font-bold text-slate-200">
                 {isConnected ? `${rssi.rssiDbm} dBm` : '---'}

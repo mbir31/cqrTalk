@@ -68,6 +68,30 @@ export function playPttChirp(enabled = true) {
   osc.stop(now + 0.09);
 }
 
+export function playFloorGrantedTone(enabled = true) {
+  if (!enabled) return;
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  const now = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(880, now);
+  osc.frequency.exponentialRampToValueAtTime(1760, now + 0.04);
+
+  gain.gain.setValueAtTime(0.001, now);
+  gain.gain.exponentialRampToValueAtTime(0.14, now + 0.015);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+
+  osc.start(now);
+  osc.stop(now + 0.06);
+}
+
 export function playRogerBeep(enabled = true, style: RogerBeepStyle = 'classic') {
   if (!enabled) return;
   const ctx = getAudioContext();

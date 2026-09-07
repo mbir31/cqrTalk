@@ -35,14 +35,21 @@ const RECONNECT_BASE_DELAY_MS = 1000;
 const RECONNECT_MAX_DELAY_MS = 30_000;
 const REQUEST_TIMEOUT_MS = 4000;
 
-function computeRssi(latencyMs: number, isConnected: boolean): RssiData {
+function computeRssi(
+  latencyMs: number,
+  isConnected: boolean,
+  packetLossPct: number = 0,
+  jitterMs: number = 2
+): RssiData {
   if (!isConnected) {
     return {
       latencyMs: 0,
       rssiDbm: -120,
       bars: 0,
       quality: 'DISCONNECTED',
-      sUnit: 'S0'
+      sUnit: 'S0',
+      packetLossPct: 0,
+      jitterMs: 0
     };
   }
 
@@ -55,19 +62,19 @@ function computeRssi(latencyMs: number, isConnected: boolean): RssiData {
   let quality: RssiData['quality'] = 'POOR';
   let sUnit = 'S3';
 
-  if (boundedLatency < 45) {
+  if (boundedLatency < 45 && packetLossPct <= 1) {
     bars = 5;
     quality = 'EXCELLENT';
     sUnit = rssiDbm > -52 ? 'S9+20' : 'S9+10';
-  } else if (boundedLatency < 95) {
+  } else if (boundedLatency < 95 && packetLossPct <= 3) {
     bars = 4;
     quality = 'GOOD';
     sUnit = 'S9';
-  } else if (boundedLatency < 175) {
+  } else if (boundedLatency < 175 && packetLossPct <= 7) {
     bars = 3;
     quality = 'FAIR';
     sUnit = 'S7';
-  } else if (boundedLatency < 300) {
+  } else if (boundedLatency < 300 && packetLossPct <= 15) {
     bars = 2;
     quality = 'FAIR';
     sUnit = 'S5';
@@ -82,7 +89,9 @@ function computeRssi(latencyMs: number, isConnected: boolean): RssiData {
     rssiDbm,
     bars,
     quality,
-    sUnit
+    sUnit,
+    packetLossPct,
+    jitterMs
   };
 }
 
@@ -759,6 +768,9 @@ export function useWalkieTalkie() {
     const handleOnline = () => {
       shouldReconnectRef.current = true;
       connectWebSocket(activeSessionIdRef.current);
+      if (mediaEngineRef.current) {
+        mediaEngineRef.current.restartIceAll();
+      }
     };
     const handleOffline = () => {
       setConnectionState('DISCONNECTED');
@@ -768,9 +780,22 @@ export function useWalkieTalkie() {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
+    // Periodic WebRTC real stats telemetry polling
+    const telemetryInterval = window.setInterval(async () => {
+      if (mediaEngineRef.current && activeSessionIdRef.current && transportRef.current) {
+        try {
+          const stats = await mediaEngineRef.current.getNetworkTelemetry();
+          if (stats.rttMs > 0) {
+            setRssi(computeRssi(stats.rttMs, true, stats.packetLossPct, stats.jitterMs));
+          }
+        } catch (e) {}
+      }
+    }, 2500);
+
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.clearInterval(telemetryInterval);
       shouldReconnectRef.current = false;
       clearSocketTimers();
       if (transportRef.current) {
@@ -1031,6 +1056,30 @@ export function useWalkieTalkie() {
     }
   }, []);
 
+  const startMicCheck = useCallback(async (): Promise<boolean> => {
+    if (!mediaEngineRef.current) return false;
+    return await mediaEngineRef.current.startMicCheck();
+  }, []);
+
+  const stopMicCheckAndPlay = useCallback((onEnded?: () => void) => {
+    if (mediaEngineRef.current) {
+      mediaEngineRef.current.stopMicCheckAndPlay(onEnded);
+    }
+  }, []);
+
+  const cancelMicCheck = useCallback(() => {
+    if (mediaEngineRef.current) {
+      mediaEngineRef.current.cancelMicCheck();
+    }
+  }, []);
+
+  const getMicVolumeLevel = useCallback((): number => {
+    if (mediaEngineRef.current) {
+      return mediaEngineRef.current.getMicVolumeLevel();
+    }
+    return 0;
+  }, []);
+
   return {
     displayName,
     setDisplayName,
@@ -1072,6 +1121,10 @@ export function useWalkieTalkie() {
     removeParticipant,
     endSession,
     getAudioFrequencyData,
-    getAudioTimeDomainData
+    getAudioTimeDomainData,
+    startMicCheck,
+    stopMicCheckAndPlay,
+    cancelMicCheck,
+    getMicVolumeLevel
   };
 }

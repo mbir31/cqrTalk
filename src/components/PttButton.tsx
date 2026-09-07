@@ -180,18 +180,18 @@ export const PttButton: React.FC<PttButtonProps> = ({
       
       {/* Outer Tactical Rubberized Housing Ring */}
       <div
-        className={`relative w-44 h-44 sm:w-48 sm:h-48 rounded-full p-2 transition-all duration-200 bg-gradient-to-b from-[#1c222e] to-[#0e1218] border-2 ${
+        className={`relative w-36 h-36 sm:w-40 sm:h-40 rounded-full p-1.5 transition-all duration-200 bg-gradient-to-b from-[#1c222e] to-[#0e1218] border-2 ${
           isTransmitting
-            ? 'border-rose-500 shadow-[0_0_35px_rgba(244,63,94,0.5)]'
+            ? 'border-rose-500 shadow-[0_0_30px_rgba(244,63,94,0.5)]'
             : isQueued
-            ? 'border-amber-400 shadow-[0_0_30px_rgba(251,191,36,0.6)] animate-pulse'
+            ? 'border-amber-400 shadow-[0_0_25px_rgba(251,191,36,0.6)] animate-pulse'
             : isReceiving || isBusy
-            ? 'border-amber-600/70 shadow-[0_0_20px_rgba(217,119,6,0.3)]'
-            : 'border-slate-700/80 shadow-[0_12px_30px_rgba(0,0,0,0.6)]'
+            ? 'border-amber-600/70 shadow-[0_0_15px_rgba(217,119,6,0.3)]'
+            : 'border-slate-700/80 shadow-[0_10px_25px_rgba(0,0,0,0.6)]'
         }`}
       >
         {/* Recessed Bezel Frame */}
-        <div className="w-full h-full rounded-full p-1.5 bg-[#090d14] border border-slate-800 flex items-center justify-center shadow-inner">
+        <div className="w-full h-full rounded-full p-1 bg-[#090d14] border border-slate-800 flex items-center justify-center shadow-inner">
           
           {/* Main Large Tactile PTT Push Button */}
           <button
@@ -202,7 +202,7 @@ export const PttButton: React.FC<PttButtonProps> = ({
             disabled={disabled || !isConnected}
             onPointerDown={handlePointerDown}
             onPointerUp={handlePointerUp}
-            className={`w-full h-full rounded-full transition-all duration-150 flex flex-col items-center justify-center p-2 text-center cursor-pointer focus:outline-none relative overflow-hidden active:scale-95 ${
+            className={`w-full h-full rounded-full transition-all duration-150 flex flex-col items-center justify-center p-1.5 text-center cursor-pointer focus:outline-none relative overflow-hidden active:scale-95 ${
               !isConnected
                 ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
                 : isTransmitting
@@ -215,11 +215,11 @@ export const PttButton: React.FC<PttButtonProps> = ({
             }`}
           >
             {/* Top Permanent PTT Identifier Badge */}
-            <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-black/40 border border-white/10 mb-1 pointer-events-none">
-              <span className="text-[9px] font-black tracking-widest text-slate-200 uppercase font-mono">
+            <div className="flex items-center gap-1 px-2 py-0.2 rounded-full bg-black/40 border border-white/10 mb-0.5 pointer-events-none">
+              <span className="text-[8px] font-black tracking-widest text-slate-200 uppercase font-mono">
                 PTT ACTION
               </span>
-              <span className={`w-1.5 h-1.5 rounded-full ${
+              <span className={`w-1 h-1 rounded-full ${
                 isTransmitting
                   ? 'bg-white animate-ping'
                   : isQueued
@@ -231,7 +231,7 @@ export const PttButton: React.FC<PttButtonProps> = ({
             </div>
 
             {/* Center Icon */}
-            <div className={`p-2 rounded-full mb-0.5 transition-transform pointer-events-none ${
+            <div className={`p-1.5 rounded-full mb-0.5 transition-transform pointer-events-none ${
               isTransmitting
                 ? 'bg-rose-800/80 text-white scale-110 shadow-md'
                 : isQueued
@@ -241,46 +241,46 @@ export const PttButton: React.FC<PttButtonProps> = ({
                 : 'bg-slate-800/80 text-emerald-400 border border-slate-700'
             }`}>
               {isTransmitting ? (
-                <Radio className="w-6 h-6 animate-pulse" />
+                <Radio className="w-5 h-5 animate-pulse" />
               ) : isQueued ? (
-                <Clock className="w-6 h-6 animate-spin" />
+                <Clock className="w-5 h-5 animate-spin" />
               ) : isReceiving || isBusy ? (
                 <div className="relative">
-                  <Mic className="w-6 h-6 text-amber-400" />
-                  <div className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-500 border border-slate-900 flex items-center justify-center">
-                    <Lock className="w-1.5 h-1.5 text-slate-950" />
+                  <Mic className="w-5 h-5 text-amber-400" />
+                  <div className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-500 border border-slate-900 flex items-center justify-center">
+                    <Lock className="w-1 h-1 text-slate-950" />
                   </div>
                 </div>
               ) : (
-                <Mic className="w-6 h-6" />
+                <Mic className="w-5 h-5" />
               )}
             </div>
 
             {/* Primary Action Label - ALWAYS prominent PUSH TO TALK indicator */}
-            <span className="text-xs sm:text-sm font-black tracking-wider uppercase drop-shadow-sm pointer-events-none">
+            <span className="text-[11px] sm:text-xs font-black tracking-wider uppercase drop-shadow-sm pointer-events-none">
               {!isConnected
                 ? 'CONNECTING...'
                 : isTransmitting
                 ? 'PUSH TO TALK [TX]'
                 : isQueued
-                ? 'PTT QUEUED (HOLD)'
+                ? 'PTT QUEUED'
                 : isRequesting
-                ? 'ACQUIRING FLOOR...'
+                ? 'ACQUIRING...'
                 : isReceiving || isBusy
-                ? 'PUSH TO TALK [BUSY]'
+                ? 'PTT [BUSY]'
                 : 'PUSH TO TALK'}
             </span>
 
             {/* Subtitle with Context & Action Hint */}
-            <span className="text-[10px] font-semibold tracking-wide text-slate-300 mt-0.5 px-1 truncate max-w-[170px] pointer-events-none">
+            <span className="text-[9px] font-semibold tracking-wide text-slate-300 mt-0.5 px-1 truncate max-w-[150px] pointer-events-none">
               {isTransmitting
-                ? 'ON AIR • RELEASE TO LISTEN'
+                ? 'ON AIR • RELEASE'
                 : isQueued
-                ? 'HOLDING • TALK WHEN CLEAR'
+                ? 'HOLDING • QUEUED'
                 : isReceiving && currentSpeakerName
                 ? `${currentSpeakerName} talking`
                 : isReceiving || isBusy
-                ? 'HOLD TO QUEUE NEXT'
+                ? 'HOLD TO QUEUE'
                 : 'HOLD SPACE OR CLICK'}
             </span>
           </button>

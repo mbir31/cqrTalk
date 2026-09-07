@@ -106,15 +106,15 @@ export const CommunicationScreen: React.FC<CommunicationScreenProps> = ({
         {/* Left: Rubberized Walkie Antenna + Bi-Color Status LED Jewel */}
         <div className="flex items-end gap-2.5">
           <div className="flex flex-col items-center">
-            <div className="w-4 h-12 bg-gradient-to-r from-slate-800 via-slate-700 to-slate-900 rounded-t-md border-t border-x border-slate-600 shadow-md relative">
-              <div className="absolute inset-x-0 top-3 h-0.5 bg-slate-900/60" />
-              <div className="absolute inset-x-0 top-6 h-0.5 bg-slate-900/60" />
+            <div className="w-3.5 h-9 bg-gradient-to-r from-slate-800 via-slate-700 to-slate-900 rounded-t-md border-t border-x border-slate-600 shadow-md relative">
+              <div className="absolute inset-x-0 top-2.5 h-0.5 bg-slate-900/60" />
+              <div className="absolute inset-x-0 top-5 h-0.5 bg-slate-900/60" />
             </div>
-            <div className="w-7 h-2.5 bg-slate-900 rounded-t-sm border-x border-t border-slate-700 shadow-inner" />
+            <div className="w-6 h-2 bg-slate-900 rounded-t-sm border-x border-t border-slate-700 shadow-inner" />
           </div>
 
           {/* Bi-Color Physical LED Domed Jewel Indicator */}
-          <div className="mb-2">
+          <div className="mb-1.5">
             <BiColorStatusLed
               txRxState={txRxState}
               connectionState={connectionState}
@@ -127,22 +127,22 @@ export const CommunicationScreen: React.FC<CommunicationScreenProps> = ({
         <button
           type="button"
           onClick={handleShare}
-          className="px-3.5 py-1 bg-gradient-to-b from-slate-800 to-slate-900 border border-slate-700 rounded-t-xl shadow-sm hover:from-slate-700 hover:to-slate-800 transition-all flex items-center gap-2 cursor-pointer"
+          className="px-3 py-0.5 bg-gradient-to-b from-slate-800 to-slate-900 border border-slate-700 rounded-t-lg shadow-sm hover:from-slate-700 hover:to-slate-800 transition-all flex items-center gap-1.5 cursor-pointer"
           title="Share PIN & link"
         >
-          <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
-          <span className="text-[11px] font-bold tracking-widest text-slate-200 uppercase font-digital">
+          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_6px_rgba(52,211,153,0.8)]" />
+          <span className="text-[10px] font-bold tracking-widest text-slate-200 uppercase font-digital">
             PIN: {session?.pin || '----'}
           </span>
           {copiedLink ? (
-            <Check className="w-3.5 h-3.5 text-emerald-400" />
+            <Check className="w-3 h-3 text-emerald-400" />
           ) : (
-            <Share2 className="w-3.5 h-3.5 text-slate-400" />
+            <Share2 className="w-3 h-3 text-slate-400" />
           )}
         </button>
 
         {/* Right: Rotary Channel Selector Knob & Rotary Knurled Power/Volume Knob */}
-        <div className="flex items-end gap-2.5">
+        <div className="flex items-end gap-2">
           {/* Stepped Channel Dial */}
           <RotaryChannelSelector
             currentChannel={activeChannel}
@@ -155,15 +155,15 @@ export const CommunicationScreen: React.FC<CommunicationScreenProps> = ({
             onClick={onToggleSpeakerMute}
             title={speakerMuted ? "Speaker Muted (Click to activate audio)" : "Speaker Active (Click to mute)"}
           >
-            <div className="w-9 h-7 bg-gradient-to-r from-slate-700 via-slate-600 to-slate-800 rounded-t-md border-t border-x border-slate-500 shadow-md flex items-center justify-center relative group-hover:brightness-110 transition-all">
-              <div className="flex gap-1">
-                <div className="w-0.5 h-4 bg-slate-900" />
-                <div className={`w-0.5 h-4 ${speakerMuted ? 'bg-rose-400' : 'bg-emerald-400'} shadow-[0_0_4px_rgba(52,211,153,0.8)]`} />
-                <div className="w-0.5 h-4 bg-slate-900" />
+            <div className="w-8 h-6 bg-gradient-to-r from-slate-700 via-slate-600 to-slate-800 rounded-t-md border-t border-x border-slate-500 shadow-md flex items-center justify-center relative group-hover:brightness-110 transition-all">
+              <div className="flex gap-0.5">
+                <div className="w-0.5 h-3.5 bg-slate-900" />
+                <div className={`w-0.5 h-3.5 ${speakerMuted ? 'bg-rose-400' : 'bg-emerald-400'} shadow-[0_0_4px_rgba(52,211,153,0.8)]`} />
+                <div className="w-0.5 h-3.5 bg-slate-900" />
               </div>
             </div>
-            <div className="w-11 h-2 bg-slate-900 rounded-t-xs border-x border-t border-slate-700 flex items-center justify-center">
-              <span className={`text-[6.5px] font-bold font-mono tracking-tighter ${speakerMuted ? 'text-rose-400' : 'text-slate-400'}`}>
+            <div className="w-10 h-1.5 bg-slate-900 rounded-t-xs border-x border-t border-slate-700 flex items-center justify-center">
+              <span className={`text-[6px] font-bold font-mono tracking-tighter ${speakerMuted ? 'text-rose-400' : 'text-slate-400'}`}>
                 {speakerMuted ? 'MUTED' : 'VOL'}
               </span>
             </div>
@@ -174,7 +174,7 @@ export const CommunicationScreen: React.FC<CommunicationScreenProps> = ({
       {/* Realistic Rugged Handset Chassis */}
       <div
         id="active-radio-chassis"
-        className="w-full flex-1 bg-gradient-to-b from-[#1b212c] via-[#151a23] to-[#10141b] border-2 border-slate-700/80 rounded-[28px] p-3 sm:p-4 shadow-[0_20px_50px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.15)] flex flex-col justify-between relative overflow-y-auto overflow-x-hidden gap-2.5 sm:gap-3"
+        className="w-full flex-1 bg-gradient-to-b from-[#1b212c] via-[#151a23] to-[#10141b] border-2 border-slate-700/80 rounded-[24px] p-3 sm:p-3.5 shadow-[0_20px_50px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.15)] flex flex-col justify-between relative overflow-y-auto overflow-x-hidden gap-2 sm:gap-2.5"
       >
         {/* Error notification banner if any */}
         {errorMessage && (
@@ -258,26 +258,26 @@ export const CommunicationScreen: React.FC<CommunicationScreenProps> = ({
         </div>
 
         {/* 3. Bottom Radio Controls (Speaker Mute, Tones, Disconnect) */}
-        <div className="pt-2 border-t border-slate-800/80 space-y-2 shrink-0">
-          <div className="flex items-center justify-between gap-2.5">
+        <div className="pt-1.5 border-t border-slate-800/80 space-y-1.5 shrink-0">
+          <div className="flex items-center justify-between gap-2">
             {/* Speaker Mute button */}
             <button
               id="speaker-mute-button"
               type="button"
               onClick={onToggleSpeakerMute}
-              className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-semibold uppercase transition-all flex items-center justify-center gap-1.5 border shadow-sm cursor-pointer ${
+              className={`flex-1 py-2 px-2.5 rounded-lg text-[11px] font-semibold uppercase transition-all flex items-center justify-center gap-1.5 border shadow-xs cursor-pointer ${
                 speakerMuted
                   ? 'bg-rose-950/80 hover:bg-rose-900/80 text-rose-300 border-rose-800/80'
                   : 'bg-slate-800/90 hover:bg-slate-700 text-slate-200 border-slate-700'
               }`}
               title="Speaker output mute"
             >
-              {speakerMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
+              {speakerMuted ? <VolumeX className="w-3.5 h-3.5 text-rose-400" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-400" />}
               <span>{speakerMuted ? 'Unmute' : 'Mute'}</span>
             </button>
 
             {/* Sound Effects Toggle Switch */}
-            <div className="p-1 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center shadow-inner" title="Master Sound Effects">
+            <div className="p-0.5 rounded-lg bg-slate-900/80 border border-slate-800 flex items-center shadow-inner" title="Master Sound Effects">
               <TactileToggle
                 id="comm-screen-sound-toggle"
                 checked={soundEffects}
@@ -291,14 +291,14 @@ export const CommunicationScreen: React.FC<CommunicationScreenProps> = ({
                 id="comm-screen-roger-toggle"
                 type="button"
                 onClick={() => onToggleRogerBeep(!rogerBeepEnabled)}
-                className={`py-2 px-2.5 rounded-xl text-xs font-mono font-bold uppercase transition-all flex items-center gap-1.5 border shadow-xs cursor-pointer ${
+                className={`py-2 px-2 rounded-lg text-[11px] font-mono font-bold uppercase transition-all flex items-center gap-1 border shadow-xs cursor-pointer ${
                   rogerBeepEnabled
                     ? 'bg-amber-950/70 hover:bg-amber-900/70 border-amber-700/80 text-amber-300'
                     : 'bg-slate-900/80 hover:bg-slate-800 border-slate-800 text-slate-500 hover:text-slate-300'
                 }`}
                 title={`Floor Release Roger Beep: ${rogerBeepEnabled ? `Active (${rogerBeepStyle})` : 'Disabled'} (Click to toggle)`}
               >
-                <span className="text-[10px] tracking-wide">RGR</span>
+                <span className="text-[9.5px] tracking-wide">RGR</span>
                 <div className={`w-1.5 h-1.5 rounded-full ${rogerBeepEnabled ? 'bg-amber-400 shadow-[0_0_4px_rgba(251,191,36,0.8)]' : 'bg-slate-600'}`} />
               </button>
             )}
@@ -313,10 +313,10 @@ export const CommunicationScreen: React.FC<CommunicationScreenProps> = ({
                     onEndSession();
                   }
                 }}
-                className="py-2.5 px-3 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-800/60 text-xs font-semibold uppercase transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                className="py-2 px-2.5 rounded-lg bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-800/60 text-[11px] font-semibold uppercase transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
                 title="End channel for everyone"
               >
-                <Power className="w-4 h-4 text-rose-400" />
+                <Power className="w-3.5 h-3.5 text-rose-400" />
                 <span>End</span>
               </button>
             ) : (
@@ -328,10 +328,10 @@ export const CommunicationScreen: React.FC<CommunicationScreenProps> = ({
                     onLeaveSession();
                   }
                 }}
-                className="py-2.5 px-3 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-semibold uppercase transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                className="py-2 px-2.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-300 border border-slate-700 text-[11px] font-semibold uppercase transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
                 title="Disconnect from channel"
               >
-                <LogOut className="w-4 h-4 text-slate-400" />
+                <LogOut className="w-3.5 h-3.5 text-slate-400" />
                 <span>Leave</span>
               </button>
             )}

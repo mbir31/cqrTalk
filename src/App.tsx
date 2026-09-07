@@ -48,7 +48,11 @@ export default function App() {
     removeParticipant,
     endSession,
     getAudioFrequencyData,
-    getAudioTimeDomainData
+    getAudioTimeDomainData,
+    startMicCheck,
+    stopMicCheckAndPlay,
+    cancelMicCheck,
+    getMicVolumeLevel
   } = useWalkieTalkie();
 
   const [createModalType, setCreateModalType] = useState<SessionType | null>(null);
@@ -200,6 +204,12 @@ export default function App() {
           onToggleSquelchTail={setSquelchTailEnabled}
           speakerMuted={speakerMuted}
           onToggleSpeakerMute={toggleSpeakerMute}
+          onStartMicCheck={startMicCheck}
+          onStopMicCheckAndPlay={stopMicCheckAndPlay}
+          onCancelMicCheck={cancelMicCheck}
+          onGetMicVolumeLevel={getMicVolumeLevel}
+          rttMs={rssi.latencyMs}
+          packetLossPct={rssi.packetLossPct}
         />
       )}
     </div>

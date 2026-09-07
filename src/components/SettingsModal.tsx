@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Settings, X, User, Volume2, Mic, Download, ShieldCheck, Radio, Check } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Settings, X, User, Volume2, Mic, Download, ShieldCheck, Radio, Check, Activity, RefreshCw, Zap, Play, Square } from 'lucide-react';
 import { TactileToggle } from './TactileToggle';
 import { RogerBeepStyle } from '../types';
 import { previewRogerBeep } from '../utils/audioTones';
@@ -23,6 +23,12 @@ interface SettingsModalProps {
   onToggleSquelchTail?: (enabled: boolean) => void;
   speakerMuted: boolean;
   onToggleSpeakerMute: () => void;
+  onStartMicCheck?: () => Promise<boolean>;
+  onStopMicCheckAndPlay?: (onEnded?: () => void) => void;
+  onCancelMicCheck?: () => void;
+  onGetMicVolumeLevel?: () => number;
+  rttMs?: number;
+  packetLossPct?: number;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -43,16 +49,42 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   squelchTailEnabled = true,
   onToggleSquelchTail,
   speakerMuted,
-  onToggleSpeakerMute
+  onToggleSpeakerMute,
+  onStartMicCheck,
+  onStopMicCheckAndPlay,
+  onCancelMicCheck,
+  onGetMicVolumeLevel,
+  rttMs = 24,
+  packetLossPct = 0
 }) => {
   const [nameInput, setNameInput] = useState(displayName);
   const [isSaved, setIsSaved] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isInstalled, setIsInstalled] = useState(false);
 
+  // Mic check loopback test states
+  const [micCheckState, setMicCheckState] = useState<'idle' | 'recording' | 'playing'>('idle');
+  const [micCheckSeconds, setMicCheckSeconds] = useState(3);
+  const [micCheckLevel, setMicCheckLevel] = useState(0);
+  const micIntervalRef = useRef<number | null>(null);
+
   useEffect(() => {
     setNameInput(displayName);
   }, [displayName]);
+
+  // Clean up mic check on unmount/close
+  useEffect(() => {
+    if (!isOpen) {
+      if (micCheckState !== 'idle') {
+        onCancelMicCheck?.();
+        setMicCheckState('idle');
+      }
+      if (micIntervalRef.current) {
+        clearInterval(micIntervalRef.current);
+        micIntervalRef.current = null;
+      }
+    }
+  }, [isOpen, micCheckState, onCancelMicCheck]);
 
   // Capture PWA install prompt
   useEffect(() => {
@@ -87,6 +119,50 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       }
       setDeferredPrompt(null);
     }
+  };
+
+  const handleStartMicTest = async () => {
+    if (!onStartMicCheck) return;
+    const ok = await onStartMicCheck();
+    if (!ok) return;
+
+    setMicCheckState('recording');
+    setMicCheckSeconds(3);
+
+    // Track level meter
+    micIntervalRef.current = window.setInterval(() => {
+      if (onGetMicVolumeLevel) {
+        setMicCheckLevel(onGetMicVolumeLevel());
+      }
+    }, 80);
+
+    let remaining = 3;
+    const countdown = window.setInterval(() => {
+      remaining -= 1;
+      setMicCheckSeconds(remaining);
+      if (remaining <= 0) {
+        window.clearInterval(countdown);
+        if (micIntervalRef.current) {
+          window.clearInterval(micIntervalRef.current);
+          micIntervalRef.current = null;
+        }
+        setMicCheckState('playing');
+        onStopMicCheckAndPlay?.(() => {
+          setMicCheckState('idle');
+          setMicCheckLevel(0);
+        });
+      }
+    }, 1000);
+  };
+
+  const handleCancelMicTest = () => {
+    if (micIntervalRef.current) {
+      window.clearInterval(micIntervalRef.current);
+      micIntervalRef.current = null;
+    }
+    onCancelMicCheck?.();
+    setMicCheckState('idle');
+    setMicCheckLevel(0);
   };
 
   return (
@@ -140,6 +216,79 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </button>
             </div>
           </form>
+
+          {/* Interactive Mic Check & Audio Quality Diagnostic */}
+          <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <div className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                  <Mic className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Acoustic Mic Loopback Check</span>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Record 3s sample to preview your voice through the radio DSP filter.
+                </p>
+              </div>
+            </div>
+
+            {/* Mic Meter & Action */}
+            <div className="pt-2 border-t border-slate-800/80 flex items-center gap-3">
+              {micCheckState === 'idle' && (
+                <button
+                  type="button"
+                  onClick={handleStartMicTest}
+                  className="flex-1 py-2 px-3 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <Mic className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Test Microphone (3s)</span>
+                </button>
+              )}
+
+              {micCheckState === 'recording' && (
+                <div className="flex-1 flex items-center gap-2">
+                  <div className="flex-1 space-y-1">
+                    <div className="flex justify-between text-[10px] font-mono text-amber-300 font-bold">
+                      <span className="flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping inline-block" />
+                        RECORDING VOICE...
+                      </span>
+                      <span>{micCheckSeconds}s left</span>
+                    </div>
+                    {/* Live VU meter bar */}
+                    <div className="h-2 w-full bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                      <div
+                        className="h-full bg-gradient-to-r from-emerald-500 via-amber-400 to-rose-500 transition-all duration-75"
+                        style={{ width: `${Math.max(5, micCheckLevel)}%` }}
+                      />
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCancelMicTest}
+                    className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white"
+                  >
+                    <Square className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
+              {micCheckState === 'playing' && (
+                <div className="flex-1 flex items-center justify-between py-1.5 px-3 rounded-xl bg-amber-950/40 border border-amber-600/40 text-amber-300 text-xs font-semibold animate-pulse">
+                  <span className="flex items-center gap-1.5">
+                    <Play className="w-3.5 h-3.5 text-amber-400" />
+                    Playing Loopback Audio...
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleCancelMicTest}
+                    className="text-[10px] uppercase font-bold text-slate-400 hover:text-white cursor-pointer"
+                  >
+                    Stop
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
 
           {/* Sound Effects Toggle Switch */}
           <div className="p-3.5 rounded-2xl bg-slate-900/60 border border-slate-800 flex items-center justify-between">
@@ -327,23 +476,31 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-slate-800 text-xs space-y-2">
             <div className="text-slate-200 font-bold uppercase tracking-wider flex items-center gap-1.5 pb-1 border-b border-slate-800">
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              Hardware & Protocol Specs
+              Hardware & DSP Engine Specs
             </div>
             <div className="flex justify-between text-slate-400">
               <span>Duplex Control:</span>
               <span className="text-slate-200 font-medium">Half-Duplex (Authoritative)</span>
             </div>
             <div className="flex justify-between text-slate-400">
-              <span>Echo Cancellation:</span>
-              <span className="text-emerald-400 font-medium">Hardware Enabled</span>
+              <span>Playout Buffer Target:</span>
+              <span className="text-emerald-400 font-medium">0ms (Zero-Buffer Instant)</span>
             </div>
             <div className="flex justify-between text-slate-400">
-              <span>Audio Codec:</span>
-              <span className="text-slate-200 font-medium">WebRTC Opus (48 kHz)</span>
+              <span>In-Band Error Correction:</span>
+              <span className="text-emerald-400 font-medium">FEC + DTX Enabled</span>
             </div>
             <div className="flex justify-between text-slate-400">
-              <span>Floor Lease Ceiling:</span>
-              <span className="text-slate-200 font-medium">25 Seconds Maximum</span>
+              <span>Noise & Rumble Suppression:</span>
+              <span className="text-emerald-400 font-medium">80Hz High-Pass + Dynamics</span>
+            </div>
+            <div className="flex justify-between text-slate-400">
+              <span>Live Round-Trip RTT:</span>
+              <span className="text-slate-200 font-medium font-mono">{rttMs} ms</span>
+            </div>
+            <div className="flex justify-between text-slate-400">
+              <span>Packet Loss:</span>
+              <span className="text-slate-200 font-medium font-mono">{packetLossPct}%</span>
             </div>
           </div>
         </div>

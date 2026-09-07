@@ -60,5 +60,7 @@ export interface RssiData {
   bars: number; // 0 to 5
   quality: 'EXCELLENT' | 'GOOD' | 'FAIR' | 'POOR' | 'DISCONNECTED';
   sUnit: string; // e.g. 'S9+20', 'S9', 'S7', 'S5', 'S2', 'S0'
+  packetLossPct?: number;
+  jitterMs?: number;
 }
 

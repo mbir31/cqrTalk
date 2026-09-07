@@ -15,7 +15,7 @@ export const AudioFrequencyVisualizer: React.FC<AudioFrequencyVisualizerProps> =
   txRxState,
   getAudioFrequencyData,
   getAudioTimeDomainData,
-  height = 80
+  height = 36
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -264,15 +264,15 @@ export const AudioFrequencyVisualizer: React.FC<AudioFrequencyVisualizerProps> =
       className="w-full rounded-xl bg-[#060a10] border border-slate-800/90 shadow-[inset_0_2px_8px_rgba(0,0,0,0.8)] overflow-hidden relative select-none"
     >
       {/* Top Visualizer Telemetry Strip */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-slate-800/60 text-[10px] bg-slate-900/50">
+      <div className="flex items-center justify-between px-2.5 py-1 border-b border-slate-800/60 text-[9px] bg-slate-900/50">
         <div className="flex items-center gap-1.5">
-          <Activity className={`w-3.5 h-3.5 ${
+          <Activity className={`w-3 h-3 ${
             isTransmitting ? 'text-rose-400 animate-pulse' : isReceiving ? 'text-emerald-400 animate-pulse' : 'text-slate-400'
           }`} />
           <span className="font-semibold text-slate-300 uppercase tracking-wider">
-            Audio Spectrum
+            Spectrum
           </span>
-          <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold uppercase ${
+          <span className={`px-1 py-0.2 rounded text-[8px] font-bold uppercase ${
             isTransmitting
               ? 'bg-rose-950 text-rose-300 border border-rose-800/60'
               : isReceiving
@@ -283,9 +283,9 @@ export const AudioFrequencyVisualizer: React.FC<AudioFrequencyVisualizerProps> =
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {/* Peak Frequency Readout */}
-          <span className="font-digital text-emerald-400 font-bold text-[10px]">
+          <span className="font-digital text-emerald-400 font-bold text-[9px]">
             {peakFreqLabel}
           </span>
 
@@ -293,7 +293,7 @@ export const AudioFrequencyVisualizer: React.FC<AudioFrequencyVisualizerProps> =
           <button
             type="button"
             onClick={cycleMode}
-            className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-[9px] font-bold uppercase transition-colors cursor-pointer"
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-[8.5px] font-bold uppercase transition-colors cursor-pointer"
             title="Toggle Visualizer Mode: Spectrum / Waveform / Dual"
           >
             {mode === 'spectrum' ? (
@@ -326,7 +326,7 @@ export const AudioFrequencyVisualizer: React.FC<AudioFrequencyVisualizerProps> =
       />
 
       {/* Bottom Frequency Scale Markers */}
-      <div className="flex justify-between px-3 py-1 text-[8px] font-digital text-slate-500 border-t border-slate-800/40 bg-slate-900/30">
+      <div className="flex justify-between px-2.5 py-0.5 text-[7.5px] font-digital text-slate-500 border-t border-slate-800/40 bg-slate-900/30">
         <span>100 Hz</span>
         <span>500 Hz</span>
         <span>1.5 kHz</span>
