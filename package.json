@@ -1,7 +1,9 @@
 {
-  "name": "react-example",
+  "name": "cqrtalk",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Production-grade touchscreen walkie-talkie PWA with real-time half-duplex voice communication and authoritative floor control.",
+  "homepage": "https://cqrt.vercel.app/",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
