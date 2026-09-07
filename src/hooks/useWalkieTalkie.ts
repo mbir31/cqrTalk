@@ -698,7 +698,7 @@ export function useWalkieTalkie() {
           }
 
           case 'error': {
-            const terminalCodes = ['SESSION_NOT_FOUND', 'SESSION_EXPIRED', 'SESSION_FULL', 'INVALID_JOIN'];
+            const terminalCodes = ['SESSION_NOT_FOUND', 'SESSION_EXPIRED', 'SESSION_FULL', 'INVALID_JOIN', 'ALREADY_CONNECTED'];
             if (terminalCodes.includes(msg.code)) {
               // The session we were in (or tried to join) no longer accepts us —
               // drop back to the home screen with a clear explanation.
@@ -877,9 +877,17 @@ export function useWalkieTalkie() {
         const remaining = Math.max(0, Math.ceil((floor.leaseExpiresAt! - Date.now()) / 1000));
         setLeaseSecondsLeft(remaining);
         if (remaining <= 0) {
-          // Release locally — the server lease ticker broadcasts shortly after
+          // Release locally and send floor_release
           if (mediaEngineRef.current) {
             mediaEngineRef.current.stopTransmitting();
+          }
+          sendWs({ type: 'floor_release', participantId });
+          recordTransmissionEnd();
+          if (rogerBeepEnabledRef.current) {
+            playRogerBeep(soundEffectsRef.current, rogerBeepStyleRef.current);
+          }
+          if (squelchTailEnabledRef.current) {
+            playSquelchTail(soundEffectsRef.current);
           }
           pttRequestPendingRef.current = false;
           setTxState('IDLE');

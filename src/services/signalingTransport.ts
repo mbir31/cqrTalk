@@ -47,6 +47,7 @@ export class SignalingTransport {
   private leaseCheckInterval: number | null = null;
   private lastPingSent = 0;
   private latency = 12;
+  private hasEverConnectedNative = false;
 
   // In Serverless mode, the host client acts as the authoritative floor and room arbiter
   private serverlessState: SessionData | null = null;
@@ -105,6 +106,7 @@ export class SignalingTransport {
 
       ws.onopen = () => {
         if (this.isClosed || this.ws !== ws) return;
+        this.hasEverConnectedNative = true;
         if (this.fallbackTimer) {
           clearTimeout(this.fallbackTimer);
           this.fallbackTimer = null;
@@ -127,18 +129,21 @@ export class SignalingTransport {
 
       ws.onerror = (err) => {
         if (this.isClosed || this.ws !== ws) return;
-        // On native failure, switch to serverless if not already closed
-        if (this.mode === 'native') {
+        if (!this.hasEverConnectedNative && this.mode === 'native') {
           this.cleanupNative();
           this.switchToSeverless();
+        } else {
+          this.opts.onError(err);
         }
       };
 
       ws.onclose = () => {
         if (this.isClosed || this.ws !== ws) return;
-        if (this.mode === 'native') {
+        if (!this.hasEverConnectedNative && this.mode === 'native') {
           this.cleanupNative();
           this.switchToSeverless();
+        } else {
+          this.opts.onClose();
         }
       };
     } catch (err) {
@@ -456,8 +461,9 @@ export class SignalingTransport {
       }
 
       case 'signal': {
-        // Target filtering
-        if (!msg.toParticipantId || msg.toParticipantId === this.opts.participantId) {
+        // Target filtering (accept both targetParticipantId and toParticipantId)
+        const target = msg.targetParticipantId || msg.toParticipantId;
+        if (!target || target === this.opts.participantId) {
           this.opts.onMessage(msg);
         }
         break;

@@ -5,9 +5,9 @@
 [![Live Demo](https://img.shields.io/badge/Live%20App-cqrt.vercel.app-00dfa2?style=for-the-badge&logo=vercel&logoColor=black)](https://cqrt.vercel.app/)
 [![PWA](https://img.shields.io/badge/PWA-Zero--Install-10b981?style=for-the-badge&logo=pwa&logoColor=white)](https://cqrt.vercel.app/)
 [![WebRTC](https://img.shields.io/badge/Media-WebRTC%20Opus%2048kHz-3b82f6?style=for-the-badge&logo=webrtc&logoColor=white)](https://cqrt.vercel.app/)
-[![Latency](https://img.shields.io/badge/Latency-Sub--50ms%20Zero--Buffer-06b6d4?style=for-the-badge&logo=fastapi&logoColor=white)](https://cqrt.vercel.app/)
+[![Latency](https://img.shields.io/badge/Latency-Ultra--Low%20Adaptive%20Buffer-06b6d4?style=for-the-badge&logo=fastapi&logoColor=white)](https://cqrt.vercel.app/)
 [![Security](https://img.shields.io/badge/Security-DTLS--SRTP%20Encrypted-f59e0b?style=for-the-badge&logo=shield&logoColor=white)](https://cqrt.vercel.app/)
-[![Privacy](https://img.shields.io/badge/Privacy-No%20Accounts%20%7C%20No%20Logs-8b5cf6?style=for-the-badge&logo=privateinternetaccess&logoColor=white)](https://cqrt.vercel.app/)
+[![Privacy](https://img.shields.io/badge/Privacy-No%20Accounts%20%7C%20No%20Audio%20Stored-8b5cf6?style=for-the-badge&logo=privateinternetaccess&logoColor=white)](https://cqrt.vercel.app/)
 
 <br />
 
@@ -80,10 +80,10 @@ Built as a high-performance Progressive Web App (PWA) on modern WebRTC and Web A
 
 ## 🚀 Latest Features & Core Additions
 
-### 1. ⚡ Ultra-Low Latency & Zero-Lag Transmission
-- **Sub-50ms Playout Target**: Direct peer-to-peer WebRTC media tracks bypass standard 200ms+ browser audio jitter buffering by applying zero playout delay targets (`playoutDelayHint = 0` and `jitterBufferTarget = 0`).
+### 1. ⚡ Ultra-Low Latency & Fast-Keying Audio Transmission
+- **Low-Latency Adaptive Playout**: Direct peer-to-peer WebRTC media tracks utilize optimized playout delay configurations to eliminate perceptible latency while maintaining smooth audio rendering across variable wireless connections.
 - **Pre-Warmed Microphone Tracks**: Audio capture streams are initialized on channel entry so PTT keying occurs instantaneously (0ms un-gating latency) without waiting for device hardware wake-up.
-- **Opus SDP Packet Optimization**: Custom SDP conditioning sets `minptime=10`, `ptime=20`, `maxaveragebitrate=32000`, `cbr=0`, and `usedtx=1` for optimal voice packet delivery with minimal mobile data consumption.
+- **Opus SDP Packet Optimization**: Custom SDP conditioning dynamically targets the active Opus payload (`opus/48000`) to enforce `useinbandfec=1`, `usedtx=1`, `minptime=10`, `ptime=20`, `maxaveragebitrate=32000`, `cbr=0`, and mono downmixing for voice clarity and low bandwidth consumption.
 
 ### 2. 🎙️ Studio-Grade DSP Audio Pipeline & Noise Suppression
 - **80 Hz High-Pass Sub-Rumble Cut**: Active Biquad filter cuts handling noise, desk bumps, and wind rumble before transmission.
@@ -112,7 +112,7 @@ cqrTalk® separates voice communication into two distinct, privacy-preserving la
 - **Zero Audio Storage**: Voice data **never passes through or touches any server disk or database**. The server only brokers lightweight JSON signaling messages (SDP handshakes, ICE candidates, and deterministic floor requests).
 - **Authoritative Half-Duplex Floor Arbitration**: Walkie-talkies succeed because only one person transmits at a time. The control plane acts as an authoritative referee: when Operator A presses PTT, the server grants the floor lease, locks out other operators with an instant `BUSY` signal, and enforces an automatic **25-second deadlock failsafe ceiling**.
 - **Ephemeral Session Lifecycle**: Channels live entirely in transient memory with an automatic **12-hour TTL** and immediate cleanup upon host disconnection. No chat transcripts, no user registries, and no metadata logs.
-- **Brute-Force Immune 4-Digit PINs**: Channel access is secured by random 4-digit numeric PINs protected by IP-level attempt rate limiting.
+- **Cryptographically Secure PINs & Rate Limiting**: Channel access is secured by numeric PINs generated via secure cryptographic entropy and protected by IP-level attempt rate limiting.
 
 ### 2. Direct Peer-to-Peer Media Plane (DTLS-SRTP Encrypted)
 - **End-to-End Browser Encryption**: Voice is streamed directly peer-to-peer via **WebRTC** using standard **DTLS-SRTP encryption**. Eavesdropping or man-in-the-middle packet sniffing is mathematically impossible.

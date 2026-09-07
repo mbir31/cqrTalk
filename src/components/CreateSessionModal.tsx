@@ -7,6 +7,7 @@ interface CreateSessionModalProps {
   onClose: () => void;
   type: SessionType;
   displayName: string;
+  onSaveDisplayName?: (name: string) => void;
   onSessionCreated: (sessionId: string, hostToken?: string) => void;
 }
 
@@ -15,6 +16,7 @@ export const CreateSessionModal: React.FC<CreateSessionModalProps> = ({
   onClose,
   type,
   displayName,
+  onSaveDisplayName,
   onSessionCreated
 }) => {
   const [operatorName, setOperatorName] = useState(displayName);
@@ -130,6 +132,7 @@ export const CreateSessionModal: React.FC<CreateSessionModalProps> = ({
 
   const handleEnterRadio = () => {
     if (createdSession) {
+      onSaveDisplayName?.(operatorName.trim() || 'Operator');
       onSessionCreated(createdSession.sessionId, createdSession.hostToken);
     }
   };

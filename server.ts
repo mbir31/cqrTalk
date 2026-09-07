@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import http from 'http';
 import path from 'path';
@@ -10,6 +11,9 @@ const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const TRUST_PROXY = process.env.TRUST_PROXY === 'true';
 
 const app = express();
+if (TRUST_PROXY) {
+  app.set('trust proxy', 1);
+}
 app.disable('x-powered-by');
 app.use(express.json({ limit: '32kb' }));
 
@@ -103,22 +107,21 @@ function checkRateLimit(map: Map<string, { count: number; resetAt: number }>, ip
   return true;
 }
 
-// Generate unique 4-digit PIN
+// Generate unique 4-digit PIN using crypto.randomInt
 function generateUniquePin(): string {
   for (let attempts = 0; attempts < 2000; attempts++) {
-    const pin = Math.floor(1000 + Math.random() * 9000).toString();
+    const pin = crypto.randomInt(1000, 10000).toString();
     if (!pinToSessionId.has(pin)) {
       return pin;
     }
   }
-  // Extremely unlikely path: release and retry once more with a full rescan
+  // Fallback linear scan if dense
   for (let pin = 1000; pin <= 9999; pin++) {
     const candidate = String(pin);
     if (!pinToSessionId.has(candidate)) {
       return candidate;
     }
   }
-  // All 9000 PINs taken — caller should return 503; surface as a signal.
   throw new Error('NO_PINS_AVAILABLE');
 }
 
@@ -779,10 +782,19 @@ wss.on('connection', (ws) => {
             message: 'This session has been ended by the host.'
           });
 
+          // Disconnect active participant sockets
+          for (const p of session.participants.values()) {
+            if (p.ws && p.ws.readyState === WebSocket.OPEN) {
+              p.ws.close(4000, 'Session ended by host');
+            }
+          }
+
           // Cleanup session
           pinToSessionId.delete(session.pin);
           sessions.delete(session.sessionId);
           cancelSessionTimers(session.sessionId);
+          currentSessionId = null;
+          currentParticipantId = null;
           break;
         }
 
@@ -807,6 +819,8 @@ wss.on('connection', (ws) => {
               participants: getSessionParticipantList(session)
             });
           }
+          currentSessionId = null;
+          currentParticipantId = null;
           break;
         }
 

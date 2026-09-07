@@ -67,6 +67,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [micCheckSeconds, setMicCheckSeconds] = useState(3);
   const [micCheckLevel, setMicCheckLevel] = useState(0);
   const micIntervalRef = useRef<number | null>(null);
+  const countdownRef = useRef<number | null>(null);
 
   useEffect(() => {
     setNameInput(displayName);
@@ -82,6 +83,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       if (micIntervalRef.current) {
         clearInterval(micIntervalRef.current);
         micIntervalRef.current = null;
+      }
+      if (countdownRef.current) {
+        clearInterval(countdownRef.current);
+        countdownRef.current = null;
       }
     }
   }, [isOpen, micCheckState, onCancelMicCheck]);
@@ -137,11 +142,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }, 80);
 
     let remaining = 3;
-    const countdown = window.setInterval(() => {
+    countdownRef.current = window.setInterval(() => {
       remaining -= 1;
       setMicCheckSeconds(remaining);
       if (remaining <= 0) {
-        window.clearInterval(countdown);
+        if (countdownRef.current) {
+          window.clearInterval(countdownRef.current);
+          countdownRef.current = null;
+        }
         if (micIntervalRef.current) {
           window.clearInterval(micIntervalRef.current);
           micIntervalRef.current = null;
@@ -156,6 +164,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const handleCancelMicTest = () => {
+    if (countdownRef.current) {
+      window.clearInterval(countdownRef.current);
+      countdownRef.current = null;
+    }
     if (micIntervalRef.current) {
       window.clearInterval(micIntervalRef.current);
       micIntervalRef.current = null;

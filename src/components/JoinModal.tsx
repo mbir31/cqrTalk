@@ -45,6 +45,11 @@ export const JoinModal: React.FC<JoinModalProps> = ({
     try {
       let resolvedSessionId = `pin_${cleanPin}`;
 
+      const isStaticHost = typeof window !== 'undefined' && 
+        (window.location.hostname.includes('vercel.app') || 
+         window.location.hostname.includes('netlify.app') || 
+         window.location.hostname.includes('github.io'));
+
       try {
         const res = await fetch('/api/sessions/validate', {
           method: 'POST',
@@ -57,17 +62,15 @@ export const JoinModal: React.FC<JoinModalProps> = ({
           if (data?.sessionId) {
             resolvedSessionId = data.sessionId;
           }
-        } else if (res.status !== 404) {
+        } else if (!isStaticHost) {
           const errData = await res.json().catch(() => null);
-          if (errData?.error && (res.status === 429 || res.status === 400)) {
-            throw new Error(errData.error);
-          }
+          throw new Error(errData?.error || (res.status === 404 ? 'No active channel found with this PIN.' : 'Unable to tune into channel.'));
         }
       } catch (fetchErr: any) {
-        if (fetchErr.message && fetchErr.message.includes('Too many')) {
+        if (fetchErr.message && (fetchErr.message.includes('No active') || fetchErr.message.includes('Too many') || fetchErr.message.includes('expired') || fetchErr.message.includes('full'))) {
           throw fetchErr;
         }
-        // If 404 or offline, direct PIN mesh will be used
+        // If static host or offline, fallback to direct PIN mesh
       }
 
       onSaveDisplayName(operatorName);

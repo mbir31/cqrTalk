@@ -46,33 +46,44 @@ const UNLOCK_EVENTS = ['pointerdown', 'keydown', 'touchend', 'click'] as const;
 function tuneOpusSdp(sdp: string): string {
   if (!sdp) return sdp;
 
-  return sdp.replace(/a=fmtp:(\d+) (.*)/g, (match, pt, params) => {
-    // If Opus parameters already present or payload type
-    if (params.includes('minptime') || params.includes('useinbandfec') || params.includes('opus') || /^\d+/.test(pt)) {
-      // Add or replace parameters
-      let updated = params;
-      const keyValues = [
-        ['useinbandfec', '1'],
-        ['usedtx', '1'],
-        ['minptime', '10'],
-        ['ptime', '20'],
-        ['maxaveragebitrate', '32000'],
-        ['stereo', '0'],
-        ['sprop-stereo', '0'],
-        ['cbr', '0']
-      ];
+  // Find the specific payload type for Opus (e.g. 111)
+  const opusMatch = sdp.match(/a=rtpmap:(\d+)\s+opus\/48000/i);
+  if (!opusMatch) return sdp;
+  const opusPt = opusMatch[1];
 
-      for (const [k, v] of keyValues) {
-        if (updated.includes(`${k}=`)) {
-          updated = updated.replace(new RegExp(`${k}=\\w+`), `${k}=${v}`);
-        } else {
-          updated = `${updated};${k}=${v}`;
-        }
+  let modified = sdp;
+
+  const keyValues: [string, string][] = [
+    ['useinbandfec', '1'],
+    ['usedtx', '1'],
+    ['minptime', '10'],
+    ['maxaveragebitrate', '32000'],
+    ['stereo', '0'],
+    ['sprop-stereo', '0'],
+    ['cbr', '0']
+  ];
+
+  const fmtpRegex = new RegExp(`a=fmtp:${opusPt}\\s+(.*)`);
+  const fmtpMatch = modified.match(fmtpRegex);
+
+  if (fmtpMatch) {
+    let params = fmtpMatch[1];
+    for (const [k, v] of keyValues) {
+      if (params.includes(`${k}=`)) {
+        params = params.replace(new RegExp(`${k}=\\w+`), `${k}=${v}`);
+      } else {
+        params = `${params};${k}=${v}`;
       }
-      return `a=fmtp:${pt} ${updated}`;
     }
-    return match;
-  });
+    modified = modified.replace(fmtpRegex, `a=fmtp:${opusPt} ${params}`);
+  }
+
+  // Ensure ptime=20 is explicitly declared as an SDP attribute
+  if (!modified.includes('a=ptime:')) {
+    modified = modified.replace(/(m=audio[^\r\n]*\r\n)/, `$1a=ptime:20\r\na=maxptime:20\r\n`);
+  }
+
+  return modified;
 }
 
 export class MediaEngine {
@@ -99,6 +110,7 @@ export class MediaEngine {
   private rfFilterEnabled = false;
   private unlockAttached = false;
   private unlockHandler: (() => void) | null = null;
+  private pendingIceCandidates = new Map<string, RTCIceCandidateInit[]>();
 
   // Synthetic microphone stream fallback when physical mic is denied/unavailable
   private syntheticOscillator: OscillatorNode | null = null;
@@ -708,6 +720,18 @@ export class MediaEngine {
 
       try {
         await pc.setRemoteDescription(desc);
+        // Flush any queued ICE candidates that arrived before remoteDescription was set
+        const queued = this.pendingIceCandidates.get(fromParticipantId);
+        if (queued && queued.length > 0) {
+          for (const cand of queued) {
+            try {
+              await pc.addIceCandidate(new RTCIceCandidate(cand));
+            } catch (candErr) {
+              console.warn('Error applying queued ICE candidate:', candErr);
+            }
+          }
+          this.pendingIceCandidates.delete(fromParticipantId);
+        }
       } catch (err) {
         console.warn('Error setting remote description:', err);
         return;
@@ -733,10 +757,16 @@ export class MediaEngine {
         }
       }
     } else if (signal.candidate) {
-      try {
-        await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
-      } catch (err) {
-        console.warn('Error adding ICE candidate:', err);
+      if (!pc.remoteDescription) {
+        const queue = this.pendingIceCandidates.get(fromParticipantId) || [];
+        queue.push(signal.candidate);
+        this.pendingIceCandidates.set(fromParticipantId, queue);
+      } else {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+        } catch (err) {
+          console.warn('Error adding ICE candidate:', err);
+        }
       }
     }
   }
@@ -826,6 +856,11 @@ export class MediaEngine {
       const stream = await this.acquireMicrophone(true);
       if (!stream) return false;
 
+      // Unmute mic track for the duration of the diagnostic recording
+      stream.getAudioTracks().forEach(track => {
+        track.enabled = true;
+      });
+
       this.recordedChunks = [];
       const options = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? { mimeType: 'audio/webm;codecs=opus' }
@@ -849,6 +884,13 @@ export class MediaEngine {
   }
 
   public stopMicCheckAndPlay(onEnded?: () => void): void {
+    // Restore mic track muted state according to active transmission status
+    if (this.localStream) {
+      this.localStream.getAudioTracks().forEach(track => {
+        track.enabled = this.isTransmitting;
+      });
+    }
+
     if (!this.mediaRecorder) return;
 
     this.isRecordingLoopback = false;
@@ -885,6 +927,12 @@ export class MediaEngine {
   }
 
   public cancelMicCheck(): void {
+    if (this.localStream) {
+      this.localStream.getAudioTracks().forEach(track => {
+        track.enabled = this.isTransmitting;
+      });
+    }
+
     if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
       try {
         this.mediaRecorder.stop();

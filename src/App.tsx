@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useWalkieTalkie } from './hooks/useWalkieTalkie';
 import { HomeScreen } from './components/HomeScreen';
 import { CommunicationScreen } from './components/CommunicationScreen';
@@ -60,6 +60,7 @@ export default function App() {
   const [initialJoinPin, setInitialJoinPin] = useState('');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const hasProcessedUrlRef = useRef(false);
 
   // Online / offline window state
   useEffect(() => {
@@ -73,8 +74,26 @@ export default function App() {
     };
   }, []);
 
-  // Check URL query parameters for ?pin= or ?session=
+  // Screen Wake Lock while session is active to prevent audio sleep
   useEffect(() => {
+    let wakeLock: any = null;
+    if (session && 'wakeLock' in navigator) {
+      (navigator as any).wakeLock.request('screen').then((lock: any) => {
+        wakeLock = lock;
+      }).catch(() => {});
+    }
+    return () => {
+      if (wakeLock) {
+        wakeLock.release().catch(() => {});
+      }
+    };
+  }, [session]);
+
+  // Check URL query parameters for ?pin= or ?session= on initial load only
+  useEffect(() => {
+    if (hasProcessedUrlRef.current) return;
+    hasProcessedUrlRef.current = true;
+
     const params = new URLSearchParams(window.location.search);
     const pin = params.get('pin');
     const sessionId = params.get('session');
@@ -82,6 +101,7 @@ export default function App() {
     if (pin) {
       setInitialJoinPin(pin);
       setIsJoinModalOpen(true);
+      window.history.replaceState({}, document.title, window.location.pathname);
     } else if (sessionId) {
       // Re-attach the creator token if this tab created the session earlier
       let hostToken: string | undefined;
@@ -91,6 +111,7 @@ export default function App() {
         // Storage unavailable
       }
       joinSession(sessionId, hostToken);
+      window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, [joinSession]);
 
@@ -169,6 +190,7 @@ export default function App() {
           onClose={() => setCreateModalType(null)}
           type={createModalType}
           displayName={displayName}
+          onSaveDisplayName={setDisplayName}
           onSessionCreated={handleSessionCreated}
         />
       )}
