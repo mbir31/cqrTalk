@@ -45,9 +45,11 @@ export const AudioFrequencyVisualizer: React.FC<AudioFrequencyVisualizerProps> =
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const fftBins = 64;
-    const freqData = new Uint8Array(fftBins);
-    const timeData = new Uint8Array(fftBins);
+    // Buffers sized to the media engine analyser (fftSize 256)
+    const freqBins = 128; // = analyser.frequencyBinCount
+    const timeSamples = 256; // = analyser.fftSize
+    const freqData = new Uint8Array(freqBins);
+    const timeData = new Uint8Array(timeSamples);
 
     // Track resize
     const handleResize = () => {
@@ -138,7 +140,8 @@ export const AudioFrequencyVisualizer: React.FC<AudioFrequencyVisualizerProps> =
 
           if (isActive && hasRealAudio) {
             // Map FFT bins to human audible speech frequencies (approx 100Hz - 4000Hz)
-            const binIdx = Math.floor((i / barCount) * (fftBins * 0.7));
+            // bin width ≈ 187 Hz at 48kHz/fftSize256, so ~24 bins cover the voice band
+            const binIdx = Math.min(Math.floor((i / barCount) * 24), freqData.length - 1);
             value = (freqData[binIdx] || 0) / 255;
           } else if (isActive) {
             // Simulated voice wave if mic access is simulated or silence during talk
@@ -204,7 +207,7 @@ export const AudioFrequencyVisualizer: React.FC<AudioFrequencyVisualizerProps> =
       // 3. Render Waveform / Oscilloscope Mode or Dual Mode
       if (mode === 'waveform' || mode === 'dual') {
         ctx.beginPath();
-        const sliceWidth = width / (fftBins - 1);
+        const sliceWidth = width / (timeSamples - 1);
         let currentX = 0;
 
         ctx.lineWidth = mode === 'dual' ? 1.5 : 2;
@@ -212,16 +215,16 @@ export const AudioFrequencyVisualizer: React.FC<AudioFrequencyVisualizerProps> =
         ctx.shadowColor = primaryColor;
         ctx.shadowBlur = mode === 'dual' ? 4 : 8;
 
-        for (let i = 0; i < fftBins; i++) {
+        for (let i = 0; i < timeSamples; i++) {
           let v = 0.5;
 
           if (isActive && hasRealAudio && timeData[i] !== undefined) {
             v = timeData[i] / 255;
           } else if (isActive) {
-            v = 0.5 + (Math.sin(t * 8 + i * 0.3) * 0.25) + (Math.cos(t * 14 + i * 0.7) * 0.15);
+            v = 0.5 + (Math.sin(t * 8 + i * 0.12) * 0.25) + (Math.cos(t * 14 + i * 0.28) * 0.15);
           } else {
             // Idle gentle carrier signal line
-            v = 0.5 + (Math.sin(t * 2 + i * 0.15) * 0.04);
+            v = 0.5 + (Math.sin(t * 2 + i * 0.06) * 0.04);
           }
 
           const y = v * (h - 12) + 6;

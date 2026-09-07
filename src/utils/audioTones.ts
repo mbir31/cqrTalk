@@ -7,6 +7,26 @@
 import { RogerBeepStyle } from '../types';
 
 let audioCtx: AudioContext | null = null;
+let unlockAttached = false;
+
+/**
+ * Browsers gate AudioContext on user activation. Attach one-time gesture
+ * listeners so tones start as soon as the operator first interacts — and any
+ * later suspended context is resumed on the next interaction.
+ */
+function attachUnlockListener(): void {
+  if (unlockAttached || typeof window === 'undefined') return;
+  unlockAttached = true;
+  const unlock = () => {
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(() => {});
+    }
+  };
+  const events = ['pointerdown', 'keydown', 'touchend', 'click'] as const;
+  for (const ev of events) {
+    window.addEventListener(ev, unlock, { capture: true, passive: true });
+  }
+}
 
 function getAudioContext(): AudioContext | null {
   if (typeof window === 'undefined') return null;
@@ -16,6 +36,7 @@ function getAudioContext(): AudioContext | null {
       audioCtx = new AudioContextClass();
     }
   }
+  attachUnlockListener();
   if (audioCtx && audioCtx.state === 'suspended') {
     audioCtx.resume().catch(() => {});
   }

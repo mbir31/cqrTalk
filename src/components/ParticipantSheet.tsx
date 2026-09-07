@@ -59,7 +59,7 @@ export const ParticipantSheet: React.FC<ParticipantSheetProps> = ({
                 {groupName || 'Channel Operators'}
               </h3>
               <span className="text-xs text-slate-400">
-                {participants.length} connected
+                {participants.filter(p => p.isOnline).length}/{participants.length} online
               </span>
             </div>
           </div>
