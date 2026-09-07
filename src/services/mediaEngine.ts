@@ -1,5 +1,5 @@
 /**
- * cqrTalk WebRTC Media Plane Engine
+ * cqrTalk® WebRTC Media Plane Engine
  * Handles low-latency half-duplex voice transmission, peer connections,
  * receiver DSP (tactical RF bandpass), and audio metering.
  */

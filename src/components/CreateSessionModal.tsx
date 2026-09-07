@@ -33,21 +33,51 @@ export const CreateSessionModal: React.FC<CreateSessionModalProps> = ({
     setError(null);
 
     try {
-      const res = await fetch('/api/sessions/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type,
-          groupName: type === 'group' ? groupName : '1-to-1 Private Radio',
-          displayName: operatorName
-        })
-      });
+      let data: any = null;
 
-      if (!res.ok) {
-        throw new Error('Failed to create channel session');
+      // Try hitting the backend server first (Node/Express environment)
+      try {
+        const res = await fetch('/api/sessions/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type,
+            groupName: type === 'group' ? groupName : '1-to-1 Private Radio',
+            displayName: operatorName
+          })
+        });
+
+        if (res.ok) {
+          data = await res.json();
+        } else if (res.status !== 404) {
+          const errData = await res.json().catch(() => null);
+          if (errData?.error && res.status === 429) {
+            throw new Error(errData.error);
+          }
+        }
+      } catch (fetchErr: any) {
+        if (fetchErr.message && fetchErr.message.includes('Too many')) {
+          throw fetchErr;
+        }
+        // Endpoint missing (e.g. 404 on Vercel static) or network error — fall through to serverless session
       }
 
-      const data = await res.json();
+      // If backend was not reached (e.g. static Vercel host), create an instant serverless channel
+      if (!data?.sessionId) {
+        const pin = Math.floor(1000 + Math.random() * 9000).toString();
+        const sessionId = `pin_${pin}`;
+        const hostToken = 'ht_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+        data = {
+          sessionId,
+          pin,
+          type,
+          groupName: type === 'group' ? (groupName.trim() || 'Walkie-Talkie Group') : '1-to-1 Private Radio',
+          displayName: operatorName.trim() || 'Operator',
+          hostToken,
+          expiresAt: Date.now() + 12 * 60 * 60 * 1000
+        };
+      }
+
       if (data?.sessionId && data?.hostToken) {
         // Persist the creator token for this tab so a reload keeps host rights
         try {
@@ -64,7 +94,7 @@ export const CreateSessionModal: React.FC<CreateSessionModalProps> = ({
     }
   };
 
-  const inviteUrl = createdSession ? `${window.location.origin}/?pin=${createdSession.pin}` : '';
+  const inviteUrl = createdSession ? `${window.location.origin}/?pin=${createdSession.pin}&session=${createdSession.sessionId}` : '';
 
   const handleCopyLink = () => {
     if (!inviteUrl) return;

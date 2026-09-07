@@ -43,19 +43,35 @@ export const JoinModal: React.FC<JoinModalProps> = ({
     setError(null);
 
     try {
-      const res = await fetch('/api/sessions/validate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin: cleanPin })
-      });
+      let resolvedSessionId = `pin_${cleanPin}`;
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Invalid or expired channel PIN');
+      try {
+        const res = await fetch('/api/sessions/validate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin: cleanPin })
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.sessionId) {
+            resolvedSessionId = data.sessionId;
+          }
+        } else if (res.status !== 404) {
+          const errData = await res.json().catch(() => null);
+          if (errData?.error && (res.status === 429 || res.status === 400)) {
+            throw new Error(errData.error);
+          }
+        }
+      } catch (fetchErr: any) {
+        if (fetchErr.message && fetchErr.message.includes('Too many')) {
+          throw fetchErr;
+        }
+        // If 404 or offline, direct PIN mesh will be used
       }
 
       onSaveDisplayName(operatorName);
-      onJoin(data.sessionId);
+      onJoin(resolvedSessionId);
     } catch (err: any) {
       setError(err.message || 'Unable to join channel');
     } finally {

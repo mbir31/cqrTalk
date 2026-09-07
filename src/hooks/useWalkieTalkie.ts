@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { SessionData, Participant, FloorState, TxRxState, ConnectionState, TransmissionRecord, RssiData, RogerBeepStyle } from '../types';
 import { MediaEngine } from '../services/mediaEngine';
+import { SignalingTransport, TransportMode } from '../services/signalingTransport';
 import {
   playPttChirp,
   playRogerBeep,
@@ -161,9 +162,10 @@ export function useWalkieTalkie() {
 
   // ---------------------------------------------------------------------------
   // Refs — the single source of truth for anything socket handlers read, so the
-  // WebSocket lifecycle is never coupled to frequently-changing React state.
+  // transport lifecycle is never coupled to frequently-changing React state.
   // ---------------------------------------------------------------------------
-  const wsRef = useRef<WebSocket | null>(null);
+  const transportRef = useRef<SignalingTransport | null>(null);
+  const [transportMode, setTransportMode] = useState<TransportMode>('native');
   const socketGenerationRef = useRef<number>(0);
   const mediaEngineRef = useRef<MediaEngine | null>(null);
   const pingIntervalRef = useRef<number | null>(null);
@@ -281,13 +283,13 @@ export function useWalkieTalkie() {
     }
   }, []);
 
-  /** Send message via WebSocket safely. */
+  /** Send message via transport safely. */
   const sendWs = useCallback((msg: any) => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+    if (transportRef.current) {
       try {
-        wsRef.current.send(JSON.stringify(msg));
+        transportRef.current.send(msg);
       } catch (err) {
-        // Socket died mid-send; the close handler will reconnect
+        // Transport error mid-send
       }
     }
   }, []);
@@ -319,9 +321,9 @@ export function useWalkieTalkie() {
       reconnectTimeoutRef.current = null;
     }
 
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+    if (transportRef.current) {
       try {
-        wsRef.current.send(JSON.stringify({ type: 'leave' }));
+        transportRef.current.send({ type: 'leave', participantId });
       } catch (err) {
         // Ignore
       }
@@ -343,7 +345,7 @@ export function useWalkieTalkie() {
     };
     floorRef.current = emptyFloor;
     setFloor(emptyFloor);
-  }, [setTxState]);
+  }, [setTxState, participantId]);
 
   /**
    * WebSocket connection logic — STABLE identity. All state read inside the
@@ -357,84 +359,77 @@ export function useWalkieTalkie() {
     const generation = ++socketGenerationRef.current;
     activeSessionIdRef.current = targetSessionId || null;
 
-    // Detach & close any previous socket without letting its handlers fire
-    const previous = wsRef.current;
+    // Detach & close any previous transport
+    const previous = transportRef.current;
     if (previous) {
-      previous.onopen = null;
-      previous.onmessage = null;
-      previous.onclose = null;
-      previous.onerror = null;
       try {
         previous.close();
       } catch (err) {
         // Ignore
       }
-      wsRef.current = null;
+      transportRef.current = null;
     }
 
     setConnectionState('CONNECTING');
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    const hostToken = pendingHostTokenRef.current || undefined;
 
-    let ws: WebSocket;
-    try {
-      ws = new WebSocket(wsUrl);
-    } catch (err) {
-      setConnectionState('DISCONNECTED');
-      return;
-    }
-    wsRef.current = ws;
+    const transport = new SignalingTransport({
+      sessionId: targetSessionId || 'standby',
+      participantId,
+      displayName: displayNameRef.current,
+      isHost: Boolean(hostToken),
+      hostToken,
+      onModeChange: (mode) => {
+        setTransportMode(mode);
+      },
+      onOpen: () => {
+        if (socketGenerationRef.current !== generation) return;
+        reconnectFailuresRef.current = 0;
+        setConnectionState('CONNECTED');
+        setErrorMessage(null);
 
-    ws.onopen = () => {
-      if (socketGenerationRef.current !== generation) return;
-      reconnectFailuresRef.current = 0;
-      setConnectionState('CONNECTED');
-      setErrorMessage(null);
+        // Immediately send a ping with client timestamp for instant latency measurement
+        transport.send({ type: 'ping', clientTime: Date.now() });
 
-      // Immediately send a ping with client timestamp for instant latency measurement
-      ws.send(JSON.stringify({ type: 'ping', clientTime: Date.now() }));
-
-      // Join the session if targeting one
-      const sessionId = activeSessionIdRef.current;
-      if (sessionId) {
-        playConnectChime(soundEffectsRef.current);
-        const hostToken = pendingHostTokenRef.current;
-        pendingHostTokenRef.current = null;
-        ws.send(JSON.stringify({
-          type: 'join',
-          sessionId,
-          participantId,
-          displayName: displayNameRef.current,
-          ...(hostToken ? { hostToken } : {})
-        }));
-      }
-
-      // Ping WebSocket every 2000ms for continuous real WebSocket RTT tracking
-      clearSocketTimers();
-      pingIntervalRef.current = window.setInterval(() => {
-        if (wsRef.current === ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'ping', clientTime: Date.now() }));
+        // Join the session if targeting one
+        const sessionId = activeSessionIdRef.current;
+        if (sessionId) {
+          playConnectChime(soundEffectsRef.current);
+          const currentToken = pendingHostTokenRef.current;
+          pendingHostTokenRef.current = null;
+          transport.send({
+            type: 'join',
+            sessionId,
+            participantId,
+            displayName: displayNameRef.current,
+            ...(currentToken ? { hostToken: currentToken } : {})
+          });
         }
-      }, 2000);
 
-      // Micro-fluctuation drift interval (every 800ms) simulating natural RF carrier breathing
-      fluctuationIntervalRef.current = window.setInterval(() => {
-        setRssi(prev => {
-          if (wsRef.current !== ws || ws.readyState !== WebSocket.OPEN) return prev;
-          const drift = (Math.random() - 0.5) * 3;
-          const nextLatency = Math.max(6, Math.round(prev.latencyMs + drift));
-          return computeRssi(nextLatency, true);
-        });
-      }, 800);
-    };
+        // Ping transport every 2000ms for continuous real RTT tracking
+        clearSocketTimers();
+        pingIntervalRef.current = window.setInterval(() => {
+          if (transportRef.current === transport) {
+            transport.send({ type: 'ping', clientTime: Date.now() });
+          }
+        }, 2000);
 
-    ws.onmessage = (event) => {
-      if (socketGenerationRef.current !== generation) return;
-      try {
-        const msg = JSON.parse(event.data);
-
-        switch (msg.type) {
+        // Micro-fluctuation drift interval (every 800ms) simulating natural RF carrier breathing
+        fluctuationIntervalRef.current = window.setInterval(() => {
+          setRssi(prev => {
+            if (transportRef.current !== transport) return prev;
+            const latency = transport.getLatency();
+            const drift = (Math.random() - 0.5) * 3;
+            const nextLatency = Math.max(6, Math.round(latency + drift));
+            return computeRssi(nextLatency, true);
+          });
+        }, 800);
+      },
+      onMessage: (msg: any) => {
+        if (socketGenerationRef.current !== generation) return;
+        try {
+          switch (msg.type) {
           case 'pong': {
             if (msg.clientTime) {
               const rtt = Math.max(1, Date.now() - msg.clientTime);
@@ -708,49 +703,51 @@ export function useWalkieTalkie() {
       } catch (e) {
         console.error('Error handling ws message:', e);
       }
-    };
+      },
+      onClose: () => {
+        if (socketGenerationRef.current !== generation) return;
 
-    ws.onclose = () => {
-      if (socketGenerationRef.current !== generation) return;
+        clearSocketTimers();
+        setRssi(computeRssi(0, false));
 
-      clearSocketTimers();
-      setRssi(computeRssi(0, false));
-
-      if (shouldReconnectRef.current && typeof navigator !== 'undefined' && navigator.onLine === false) {
-        // Wait for the 'online' event instead of burning retries
-        setConnectionState(activeSessionIdRef.current ? 'RECONNECTING' : 'DISCONNECTED');
-        return;
-      }
-
-      const hasSession = !!activeSessionIdRef.current;
-      if (shouldReconnectRef.current) {
-        setConnectionState(hasSession ? 'RECONNECTING' : 'DISCONNECTED');
-        if (hasSession) {
-          playDisconnectChime(soundEffectsRef.current);
+        if (shouldReconnectRef.current && typeof navigator !== 'undefined' && navigator.onLine === false) {
+          // Wait for the 'online' event instead of burning retries
+          setConnectionState(activeSessionIdRef.current ? 'RECONNECTING' : 'DISCONNECTED');
+          return;
         }
 
-        // Exponential backoff: 1s -> 1.7s -> 2.9s -> ... capped at 30s
-        const failures = reconnectFailuresRef.current;
-        const delay = Math.min(
-          RECONNECT_MAX_DELAY_MS,
-          RECONNECT_BASE_DELAY_MS * Math.pow(1.7, failures)
-        );
-        reconnectFailuresRef.current = failures + 1;
-
-        reconnectTimeoutRef.current = window.setTimeout(() => {
-          reconnectTimeoutRef.current = null;
-          if (shouldReconnectRef.current) {
-            connectWebSocket(activeSessionIdRef.current);
+        const hasSession = !!activeSessionIdRef.current;
+        if (shouldReconnectRef.current) {
+          setConnectionState(hasSession ? 'RECONNECTING' : 'DISCONNECTED');
+          if (hasSession) {
+            playDisconnectChime(soundEffectsRef.current);
           }
-        }, delay);
-      } else {
-        setConnectionState('DISCONNECTED');
-      }
-    };
 
-    ws.onerror = () => {
-      // ws.onclose handles reconnect
-    };
+          // Exponential backoff: 1s -> 1.7s -> 2.9s -> ... capped at 30s
+          const failures = reconnectFailuresRef.current;
+          const delay = Math.min(
+            RECONNECT_MAX_DELAY_MS,
+            RECONNECT_BASE_DELAY_MS * Math.pow(1.7, failures)
+          );
+          reconnectFailuresRef.current = failures + 1;
+
+          reconnectTimeoutRef.current = window.setTimeout(() => {
+            reconnectTimeoutRef.current = null;
+            if (shouldReconnectRef.current) {
+              connectWebSocket(activeSessionIdRef.current);
+            }
+          }, delay);
+        } else {
+          setConnectionState('DISCONNECTED');
+        }
+      },
+      onError: () => {
+        // Transport handles reconnection
+      }
+    });
+
+    transportRef.current = transport;
+    transport.start();
   }, [participantId, sendWs, clearSocketTimers, leaveSession, setTxState, setRssi]);
 
   // Maintain background carrier connection on load
@@ -775,18 +772,13 @@ export function useWalkieTalkie() {
       window.removeEventListener('offline', handleOffline);
       shouldReconnectRef.current = false;
       clearSocketTimers();
-      if (wsRef.current) {
-        const closing = wsRef.current;
-        closing.onopen = null;
-        closing.onmessage = null;
-        closing.onclose = null;
-        closing.onerror = null;
+      if (transportRef.current) {
         try {
-          closing.close();
+          transportRef.current.close();
         } catch (err) {
           // Ignore
         }
-        wsRef.current = null;
+        transportRef.current = null;
       }
     };
   }, [connectWebSocket, clearSocketTimers]);
@@ -906,34 +898,32 @@ export function useWalkieTalkie() {
       pendingHostTokenRef.current = hostToken;
     }
 
-    const ws = wsRef.current;
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      activeSessionIdRef.current = sessionId;
-      setConnectionState('CONNECTED');
+    activeSessionIdRef.current = sessionId;
+    if (transportRef.current && connectionState === 'CONNECTED') {
       playConnectChime(soundEffectsRef.current);
+      const currentToken = pendingHostTokenRef.current;
       pendingHostTokenRef.current = null;
       try {
-        ws.send(JSON.stringify({
+        transportRef.current.send({
           type: 'join',
           sessionId,
           participantId,
           displayName: displayNameRef.current,
-          ...(hostToken ? { hostToken } : {})
-        }));
+          ...(currentToken ? { hostToken: currentToken } : {})
+        });
       } catch (err) {
-        // Socket died — fall through to a fresh connection
         connectWebSocket(sessionId);
       }
     } else {
       connectWebSocket(sessionId);
     }
     return true;
-  }, [connectWebSocket, participantId]);
+  }, [connectWebSocket, participantId, connectionState]);
 
   // Floor Control: Request PTT Floor
   const requestFloor = useCallback(() => {
     hapticPttPress();
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    if (!transportRef.current || connectionState !== 'CONNECTED') return;
     if (txRxStateRef.current === 'TRANSMITTING') return;
 
     const currentFloor = floorRef.current;
@@ -1048,6 +1038,7 @@ export function useWalkieTalkie() {
     participantId,
     session,
     connectionState,
+    transportMode,
     rssi,
     txRxState,
     floor,
