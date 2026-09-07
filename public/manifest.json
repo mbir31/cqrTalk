@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "cqrTalk Walkie-Talkie",
-  "short_name": "cqrTalk",
+  "name": "cqrTalk® Walkie-Talkie",
+  "short_name": "cqrTalk®",
   "description": "Real-time touchscreen walkie-talkie PWA with authoritative push-to-talk voice communication.",
   "start_url": "/",
   "scope": "/",

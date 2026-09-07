@@ -85,7 +85,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         <div className="px-3.5 py-1 bg-gradient-to-b from-slate-800 to-slate-900 border border-slate-700/80 rounded-t-lg shadow-sm flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
           <span className="text-[11px] font-bold tracking-widest text-slate-200 uppercase font-digital">
-            cqrTalk DMR
+            cqrTalk® DMR
           </span>
         </div>
 

@@ -1,5 +1,5 @@
 /**
- * cqrTalk Web Audio Sound Synthesizer
+ * cqrTalk® Web Audio Sound Synthesizer
  * Generates tactile radio squelch chirps, roger beeps, busy tones, and connection cues.
  * Pure Web Audio API synthesis - zero external asset dependencies, zero network delay.
  */

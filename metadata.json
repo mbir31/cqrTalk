@@ -1,5 +1,5 @@
 {
-  "name": "cqrTalk",
+  "name": "cqrTalk®",
   "description": "Production-quality touchscreen walkie-talkie PWA with real-time half-duplex voice communication and authoritative floor control.",
   "requestFramePermissions": ["microphone"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

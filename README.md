@@ -1,4 +1,4 @@
-# cqrTalk — Instant Zero-Install Push-To-Talk Walkie-Talkie
+# cqrTalk® — Instant Zero-Install Push-To-Talk Walkie-Talkie
 
 <div align="center">
 
@@ -19,17 +19,44 @@
 
 ---
 
-## ⚡ Why cqrTalk?
+## 📸 Screenshots
+
+Explore the physical transceiver chassis, tactical LCD display, configuration knobs, and pairing interfaces:
+
+<div align="center">
+
+### Main interface
+<img src="./Main%20interface.png" alt="Main interface" width="700" style="border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);" />
+
+<br /><br />
+
+| Configuration interface | Join a channel |
+| :---: | :---: |
+| <img src="./Configuration%20interface.png" alt="Configuration interface" width="380" style="border-radius: 10px;" /> | <img src="./Join%20a%20channel.png" alt="Join a channel" width="380" style="border-radius: 10px;" /> |
+| *Hardware Roger beeps, haptics & audio filters* | *Instant 4-digit PIN authentication* |
+
+<br />
+
+| Create 1-to-1 channel | Create Group Channel |
+| :---: | :---: |
+| <img src="./Create%201-to-1%20channel.png" alt="Create 1-to-1 channel" width="380" style="border-radius: 10px;" /> | <img src="./Create%20Group%20Channel.png" alt="Create Group Channel" width="380" style="border-radius: 10px;" /> |
+| *Direct peer-to-peer private half-duplex link* | *Multi-operator tactical dispatch broadcast* |
+
+</div>
+
+---
+
+## ⚡ Why cqrTalk®?
 
 Traditional walkie-talkie apps force teams into friction: downloading heavy 100MB apps, creating accounts, handing over phone numbers, and trusting centralized cloud servers with their live voice streams. Physical two-way UHF/VHF radios require expensive hardware ($100–$500/unit), FCC licensing, and battery chargers, yet remain completely unencrypted and susceptible to public eavesdropping.
 
-**cqrTalk eliminates every barrier.**
+**cqrTalk® eliminates every barrier.**
 
-Built as a high-performance Progressive Web App (PWA) on modern WebRTC and Web Audio standards, cqrTalk provides instant, deterministic half-duplex voice communication through your browser. Just share a **4-digit PIN** or tap an invite link, and your team is immediately on the same tactical channel.
+Built as a high-performance Progressive Web App (PWA) on modern WebRTC and Web Audio standards, cqrTalk® provides instant, deterministic half-duplex voice communication through your browser. Just share a **4-digit PIN** or tap an invite link, and your team is immediately on the same tactical channel.
 
 ```
 +-------------------------------------------------------------------------------+
-|                               cqrTalk ARCHITECTURE                            |
+|                              cqrTalk® ARCHITECTURE                            |
 +-------------------------------------------------------------------------------+
 |                                                                               |
 |   [ Operator A ]                                             [ Operator B ]   |
@@ -51,7 +78,7 @@ Built as a high-performance Progressive Web App (PWA) on modern WebRTC and Web A
 
 ## 🛡️ The Serverless Secured Communication Architecture
 
-cqrTalk separates voice communication into two distinct, privacy-preserving layers:
+cqrTalk® separates voice communication into two distinct, privacy-preserving layers:
 
 ### 1. Ephemeral Control Plane (Zero-Knowledge Signaling)
 - **Zero Audio Storage**: Voice data **never passes through or touches any server disk or database**. The server only brokers lightweight JSON signaling messages (SDP handshakes, ICE candidates, and deterministic floor requests).
@@ -103,9 +130,9 @@ Synthesized in real-time client-side via the browser's native **Web Audio API** 
 
 ---
 
-## ⚔️ Differentiation: cqrTalk vs. Alternatives
+## ⚔️ Differentiation: cqrTalk® vs. Alternatives
 
-| Feature / Capability | **cqrTalk** | **Zello / Voxer** | **Discord / Teams / Zoom** | **UHF/VHF Hardware Radios** |
+| Feature / Capability | **cqrTalk®** | **Zello / Voxer** | **Discord / Teams / Zoom** | **UHF/VHF Hardware Radios** |
 | :--- | :---: | :---: | :---: | :---: |
 | **Installation** | **Zero (Instant URL / PWA)** | Heavy App Store install | Heavy client software | Physical hardware required |
 | **Account / Sign-Up** | **None (Zero friction)** | Email / Phone / Password | Compulsory accounts | FCC / GMRS license (often required) |
@@ -187,7 +214,7 @@ The repository is optimized for deployment:
 ## 📋 Security & Permissions Notice
 
 - **Microphone Access**: WebRTC voice transmission requires standard browser microphone permission (`navigator.mediaDevices.getUserMedia`).
-- **No Background Surveillance**: Unlike native apps with continuous background location tracking, cqrTalk only transmits audio when the browser tab is open and the PTT button is intentionally keyed.
+- **No Background Surveillance**: Unlike native apps with continuous background location tracking, cqrTalk® only transmits audio when the browser tab is open and the PTT button is intentionally keyed.
 
 ---
 

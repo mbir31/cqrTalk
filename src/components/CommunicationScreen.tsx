@@ -82,8 +82,8 @@ export const CommunicationScreen: React.FC<CommunicationScreenProps> = ({
     if (!inviteUrl) return;
     if (navigator.share) {
       navigator.share({
-        title: 'cqrTalk Walkie-Talkie',
-        text: `Tune into my cqrTalk radio channel! PIN: ${session?.pin}`,
+        title: 'cqrTalk® Walkie-Talkie',
+        text: `Tune into my cqrTalk® radio channel! PIN: ${session?.pin}`,
         url: inviteUrl
       }).catch(() => {});
     } else {

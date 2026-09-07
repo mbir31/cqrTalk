@@ -86,8 +86,8 @@ export const CreateSessionModal: React.FC<CreateSessionModalProps> = ({
     if (navigator.share && createdSession) {
       try {
         await navigator.share({
-          title: 'cqrTalk Radio Invitation',
-          text: `Connect to my cqrTalk walkie-talkie channel! PIN: ${createdSession.pin}`,
+          title: 'cqrTalk® Radio Invitation',
+          text: `Connect to my cqrTalk® walkie-talkie channel! PIN: ${createdSession.pin}`,
           url: inviteUrl
         });
       } catch (err) {
@@ -222,7 +222,7 @@ export const CreateSessionModal: React.FC<CreateSessionModalProps> = ({
                 {/* Quick Share Links */}
                 <div className="flex gap-2">
                   <a
-                    href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`Join my cqrTalk walkie-talkie channel! PIN: ${createdSession.pin}\n${inviteUrl}`)}`}
+                    href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`Join my cqrTalk® walkie-talkie channel! PIN: ${createdSession.pin}\n${inviteUrl}`)}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex-1 py-2 rounded-xl bg-emerald-950/60 hover:bg-emerald-900/60 border border-emerald-800/50 text-emerald-300 text-xs text-center transition-colors font-medium"
@@ -230,7 +230,7 @@ export const CreateSessionModal: React.FC<CreateSessionModalProps> = ({
                     WhatsApp
                   </a>
                   <a
-                    href={`https://t.me/share/url?url=${encodeURIComponent(inviteUrl)}&text=${encodeURIComponent(`Join my cqrTalk walkie-talkie channel! PIN: ${createdSession.pin}`)}`}
+                    href={`https://t.me/share/url?url=${encodeURIComponent(inviteUrl)}&text=${encodeURIComponent(`Join my cqrTalk® walkie-talkie channel! PIN: ${createdSession.pin}`)}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex-1 py-2 rounded-xl bg-sky-950/60 hover:bg-sky-900/60 border border-sky-800/50 text-sky-300 text-xs text-center transition-colors font-medium"
@@ -238,7 +238,7 @@ export const CreateSessionModal: React.FC<CreateSessionModalProps> = ({
                     Telegram
                   </a>
                   <a
-                    href={`sms:?body=${encodeURIComponent(`Connect to my cqrTalk walkie-talkie channel! PIN: ${createdSession.pin} ${inviteUrl}`)}`}
+                    href={`sms:?body=${encodeURIComponent(`Connect to my cqrTalk® walkie-talkie channel! PIN: ${createdSession.pin} ${inviteUrl}`)}`}
                     className="flex-1 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs text-center transition-colors font-medium"
                   >
                     SMS

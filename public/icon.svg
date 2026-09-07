@@ -42,7 +42,7 @@
   <!-- LCD Content -->
   <text x="154" y="172" fill="#10b981" font-family="monospace" font-size="16" font-weight="bold" letter-spacing="1">CH-01 [TX/RX]</text>
   <circle cx="346" cy="166" r="6" fill="#10b981" />
-  <text x="154" y="212" fill="#34d399" font-family="system-ui, sans-serif" font-size="28" font-weight="900" letter-spacing="2">cqrTalk</text>
+  <text x="154" y="212" fill="#34d399" font-family="system-ui, sans-serif" font-size="28" font-weight="900" letter-spacing="2">cqrTalk®</text>
   <text x="154" y="238" fill="#059669" font-family="monospace" font-size="13" font-weight="bold">ONLINE // READY</text>
 
   <!-- PTT Speaker Grille / Tactile Mic Ring -->
