@@ -142,6 +142,9 @@ export const RadioDisplay: React.FC<RadioDisplayProps> = ({
                   <div className="text-sm font-bold text-white tracking-wide">
                     You have the floor (TX)
                   </div>
+                  <div className="text-[10px] text-rose-300/80 font-mono mt-0.5">
+                    PTT Active • Release button below to finish
+                  </div>
                 </div>
               </div>
               {leaseSecondsLeft > 0 && (
@@ -165,6 +168,9 @@ export const RadioDisplay: React.FC<RadioDisplayProps> = ({
                   <div className="text-sm font-bold text-white tracking-wide truncate max-w-[200px]">
                     {floor.currentSpeakerName} is speaking
                   </div>
+                  <div className="text-[10px] text-emerald-300/90 font-mono mt-0.5">
+                    PTT Status: Floor busy • Ready below when clear
+                  </div>
                 </div>
               </div>
               <div className="px-2 py-1 rounded bg-emerald-950/80 border border-emerald-700/60 text-emerald-300 text-[10px] font-bold">
@@ -182,6 +188,9 @@ export const RadioDisplay: React.FC<RadioDisplayProps> = ({
                   </div>
                   <div className="text-xs font-semibold text-slate-200">
                     Floor is occupied. Please wait.
+                  </div>
+                  <div className="text-[10px] text-amber-400/90 font-mono mt-0.5">
+                    PTT Status: Standby • Hold button below to queue
                   </div>
                 </div>
               </div>
@@ -214,7 +223,7 @@ export const RadioDisplay: React.FC<RadioDisplayProps> = ({
             txRxState={txRxState}
             getAudioFrequencyData={getAudioFrequencyData}
             getAudioTimeDomainData={getAudioTimeDomainData}
-            height={64}
+            height={50}
           />
         </div>
 

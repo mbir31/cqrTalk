@@ -95,10 +95,10 @@ export const CommunicationScreen: React.FC<CommunicationScreenProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-between w-full max-w-md mx-auto px-2 py-1 select-none min-h-[92vh]">
+    <div className="flex-1 flex flex-col items-center justify-between w-full max-w-md mx-auto px-1 sm:px-2 py-1 select-none min-h-0">
       
       {/* Top Physical Hardware Accents (Antenna, Bi-Color LED, PIN Pill, Channel Knob, & Volume Knob) */}
-      <div className="w-full flex items-end justify-between px-4 sm:px-6 -mb-1 z-10">
+      <div className="w-full flex items-end justify-between px-4 sm:px-6 -mb-1 z-10 shrink-0">
         {/* Left: Rubberized Walkie Antenna + Bi-Color Status LED Jewel */}
         <div className="flex items-end gap-2.5">
           <div className="flex flex-col items-center">
@@ -170,11 +170,11 @@ export const CommunicationScreen: React.FC<CommunicationScreenProps> = ({
       {/* Realistic Rugged Handset Chassis */}
       <div
         id="active-radio-chassis"
-        className="w-full flex-1 bg-gradient-to-b from-[#1b212c] via-[#151a23] to-[#10141b] border-2 border-slate-700/80 rounded-[28px] p-4 sm:p-5 shadow-[0_20px_50px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.15)] flex flex-col justify-between relative overflow-hidden gap-3"
+        className="w-full flex-1 bg-gradient-to-b from-[#1b212c] via-[#151a23] to-[#10141b] border-2 border-slate-700/80 rounded-[28px] p-3 sm:p-4 shadow-[0_20px_50px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.15)] flex flex-col justify-between relative overflow-y-auto overflow-x-hidden gap-2.5 sm:gap-3"
       >
         {/* Error notification banner if any */}
         {errorMessage && (
-          <div className="p-3 rounded-xl bg-rose-950/80 border border-rose-800 text-rose-300 text-xs flex items-center justify-between gap-2 shadow-lg">
+          <div className="p-3 rounded-xl bg-rose-950/80 border border-rose-800 text-rose-300 text-xs flex items-center justify-between gap-2 shadow-lg shrink-0">
             <div className="flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
               <span>{errorMessage}</span>
@@ -208,16 +208,19 @@ export const CommunicationScreen: React.FC<CommunicationScreenProps> = ({
         />
 
         {/* Last Heard / Activity Tape Drawer */}
-        <TransmissionHistoryDrawer
-          history={transmissionHistory}
-          onClearHistory={onClearHistory}
-        />
+        <div className="shrink-0">
+          <TransmissionHistoryDrawer
+            history={transmissionHistory}
+            onClearHistory={onClearHistory}
+          />
+        </div>
 
         {/* 2. Center Tactical PTT Transmit Button */}
-        <div className="py-2 flex items-center justify-center">
+        <div className="py-1 flex items-center justify-center shrink-0">
           <PttButton
             txRxState={txRxState}
             connectionState={connectionState}
+            currentSpeakerName={floor.currentSpeakerName}
             onRequestFloor={onRequestFloor}
             onReleaseFloor={onReleaseFloor}
             onToggleFloor={onToggleFloor}
@@ -225,14 +228,14 @@ export const CommunicationScreen: React.FC<CommunicationScreenProps> = ({
         </div>
 
         {/* Front Acoustic Speaker Slots */}
-        <div className="w-full flex flex-col items-center gap-1 opacity-30">
+        <div className="w-full flex flex-col items-center gap-1 opacity-30 shrink-0">
           <div className="w-32 h-0.5 bg-black rounded-full shadow-inner" />
           <div className="w-44 h-0.5 bg-black rounded-full shadow-inner" />
           <div className="w-32 h-0.5 bg-black rounded-full shadow-inner" />
         </div>
 
         {/* 3. Bottom Radio Controls (Speaker Mute, Tones, Disconnect) */}
-        <div className="pt-2 border-t border-slate-800/80 space-y-2">
+        <div className="pt-2 border-t border-slate-800/80 space-y-2 shrink-0">
           <div className="flex items-center justify-between gap-2.5">
             {/* Speaker Mute button */}
             <button

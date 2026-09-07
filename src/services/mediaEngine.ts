@@ -47,6 +47,12 @@ export class MediaEngine {
   private unlockAttached = false;
   private unlockHandler: (() => void) | null = null;
 
+  // Synthetic microphone stream fallback when physical mic is denied/unavailable
+  private syntheticOscillator: OscillatorNode | null = null;
+  private syntheticGain: GainNode | null = null;
+  public isUsingSyntheticMic = false;
+  public isMicPermissionDenied = false;
+
   constructor(callbacks: MediaEngineCallbacks) {
     this.callbacks = callbacks;
   }
@@ -76,12 +82,60 @@ export class MediaEngine {
   // Microphone & audio graph
   // ---------------------------------------------------------------------------
 
-  public async acquireMicrophone(): Promise<MediaStream> {
-    if (this.localStream && this.localStream.active) {
+  private createSyntheticStream(): MediaStream | null {
+    try {
+      const ctx = this.ensureAudioContext();
+      if (!ctx) return null;
+
+      const destination = ctx.createMediaStreamDestination();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(440, ctx.currentTime);
+      gain.gain.setValueAtTime(0, ctx.currentTime); // silent by default
+
+      osc.connect(gain);
+      gain.connect(destination);
+
+      if (!this.analyser) {
+        this.analyser = ctx.createAnalyser();
+        this.analyser.fftSize = 256;
+        this.analyser.smoothingTimeConstant = 0.8;
+        this.meterDataArray = new Uint8Array(this.analyser.frequencyBinCount);
+      }
+      try {
+        gain.connect(this.analyser);
+      } catch (e) {}
+
+      osc.start();
+
+      this.syntheticOscillator = osc;
+      this.syntheticGain = gain;
+      this.isUsingSyntheticMic = true;
+
+      // Ensure tracks start muted (half-duplex PTT)
+      destination.stream.getAudioTracks().forEach(track => {
+        track.enabled = false;
+      });
+
+      return destination.stream;
+    } catch (err) {
+      console.warn('Unable to create synthetic audio stream:', err);
+      return null;
+    }
+  }
+
+  public async acquireMicrophone(forcePrompt = false): Promise<MediaStream> {
+    if (!forcePrompt && this.localStream && this.localStream.active && !this.isUsingSyntheticMic) {
       return this.localStream;
     }
 
     try {
+      if (!navigator?.mediaDevices?.getUserMedia) {
+        throw new Error('Microphone mediaDevices API not available');
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -97,7 +151,47 @@ export class MediaEngine {
         track.enabled = false;
       });
 
+      const oldStream = this.localStream;
+      const oldTrack = oldStream ? oldStream.getAudioTracks()[0] : null;
+      const newTrack = stream.getAudioTracks()[0];
+
       this.localStream = stream;
+      this.isUsingSyntheticMic = false;
+      this.isMicPermissionDenied = false;
+
+      // Cleanup synthetic fallback oscillator if running
+      if (this.syntheticOscillator) {
+        try {
+          this.syntheticOscillator.stop();
+          this.syntheticOscillator.disconnect();
+        } catch (e) {}
+        this.syntheticOscillator = null;
+      }
+      if (this.syntheticGain) {
+        try {
+          this.syntheticGain.disconnect();
+        } catch (e) {}
+        this.syntheticGain = null;
+      }
+
+      // Update senders on existing peer connections
+      if (newTrack) {
+        for (const [pid, pc] of this.peerConnections) {
+          const senders = pc.getSenders().filter(s => s.track);
+          if (senders.length > 0) {
+            for (const s of senders) {
+              if (s.track === oldTrack || !s.track) {
+                s.replaceTrack(newTrack).catch(() => {});
+              }
+            }
+          } else {
+            pc.addTrack(newTrack, stream);
+            if (pc.remoteDescription) {
+              void this.negotiate(pid, pc);
+            }
+          }
+        }
+      }
 
       // Setup analyser for voice VU meter & frequency visualizer
       try {
@@ -121,25 +215,42 @@ export class MediaEngine {
         console.warn('AudioAnalyser setup warning:', e);
       }
 
-      // Safety: make sure every existing peer is wired to the stream
-      for (const [pid, pc] of this.peerConnections) {
-        if (pc.getSenders().length === 0 && pc.connectionState !== 'connected') {
-          const added = this.addLocalTracks(pc);
-          if (added && pc.remoteDescription) {
-            // We owe this peer our audio track — negotiate the addition
-            void this.negotiate(pid, pc);
+      return stream;
+    } catch (err: any) {
+      const isPermissionDenied =
+        err.name === 'NotAllowedError' ||
+        err.name === 'PermissionDeniedError' ||
+        err.name === 'SecurityError' ||
+        err.message?.toLowerCase().includes('permission denied') ||
+        err.message?.toLowerCase().includes('permission');
+
+      this.isMicPermissionDenied = isPermissionDenied;
+
+      // Provide synthetic fallback stream so WebRTC peer connections still initialize cleanly
+      if (!this.localStream || !this.localStream.active) {
+        const fallback = this.createSyntheticStream();
+        if (fallback) {
+          this.localStream = fallback;
+          for (const pc of this.peerConnections.values()) {
+            this.addLocalTracks(pc);
           }
         }
       }
 
-      return stream;
-    } catch (err: any) {
-      console.error('Microphone acquisition failed:', err);
-      if (this.callbacks.onError) {
+      console.warn('Microphone not acquired (using radio standby fallback):', err.message || err.name);
+
+      // Only notify generic fatal onError callback if it is NOT a normal permission block
+      if (!isPermissionDenied && this.callbacks.onError) {
         this.callbacks.onError(err);
       }
+
       throw err;
     }
+  }
+
+  /** Check whether real microphone or synthetic fallback is currently active */
+  public hasLocalStream(): boolean {
+    return !!(this.localStream && this.localStream.active);
   }
 
   /** Resume the AudioContext & retry pending playback — call from user gestures. */
@@ -210,6 +321,11 @@ export class MediaEngine {
         track.enabled = true;
       });
     }
+    if (this.isUsingSyntheticMic && this.syntheticGain && this.audioContext) {
+      try {
+        this.syntheticGain.gain.setValueAtTime(0.18, this.audioContext.currentTime);
+      } catch (e) {}
+    }
   }
 
   public stopTransmitting() {
@@ -218,6 +334,11 @@ export class MediaEngine {
       this.localStream.getAudioTracks().forEach(track => {
         track.enabled = false;
       });
+    }
+    if (this.isUsingSyntheticMic && this.syntheticGain && this.audioContext) {
+      try {
+        this.syntheticGain.gain.setValueAtTime(0, this.audioContext.currentTime);
+      } catch (e) {}
     }
   }
 
@@ -552,6 +673,19 @@ export class MediaEngine {
     this.stopTransmitting();
     for (const [id] of Array.from(this.peerConnections.entries())) {
       this.removePeer(id);
+    }
+    if (this.syntheticOscillator) {
+      try {
+        this.syntheticOscillator.stop();
+        this.syntheticOscillator.disconnect();
+      } catch (e) {}
+      this.syntheticOscillator = null;
+    }
+    if (this.syntheticGain) {
+      try {
+        this.syntheticGain.disconnect();
+      } catch (e) {}
+      this.syntheticGain = null;
     }
     if (this.localStream) {
       this.localStream.getTracks().forEach(track => track.stop());
