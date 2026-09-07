@@ -1,0 +1,179 @@
+import React, { useState, useEffect } from 'react';
+import { useWalkieTalkie } from './hooks/useWalkieTalkie';
+import { HomeScreen } from './components/HomeScreen';
+import { CommunicationScreen } from './components/CommunicationScreen';
+import { CreateSessionModal } from './components/CreateSessionModal';
+import { JoinModal } from './components/JoinModal';
+import { SettingsModal } from './components/SettingsModal';
+import { SessionType } from './types';
+
+export default function App() {
+  const {
+    displayName,
+    setDisplayName,
+    soundEffects,
+    setSoundEffects,
+    hapticsEnabled,
+    setHapticsEnabled,
+    rfFilterEnabled,
+    setRfFilterEnabled,
+    squelchTailEnabled,
+    setSquelchTailEnabled,
+    activeChannel,
+    setActiveChannel,
+    transmissionHistory,
+    speakerMuted,
+    toggleSpeakerMute,
+    participantId,
+    session,
+    connectionState,
+    rssi,
+    txRxState,
+    floor,
+    errorMessage,
+    setErrorMessage,
+    leaseSecondsLeft,
+    micVolume,
+    joinSession,
+    leaveSession,
+    requestFloor,
+    releaseFloor,
+    toggleFloor,
+    removeParticipant,
+    endSession,
+    getAudioFrequencyData,
+    getAudioTimeDomainData
+  } = useWalkieTalkie();
+
+  const [createModalType, setCreateModalType] = useState<SessionType | null>(null);
+  const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
+  const [initialJoinPin, setInitialJoinPin] = useState('');
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  // Online / offline window state
+  useEffect(() => {
+    const onOnline = () => setIsOnline(true);
+    const onOffline = () => setIsOnline(false);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, []);
+
+  // Check URL query parameters for ?pin= or ?session=
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const pin = params.get('pin');
+    const sessionId = params.get('session');
+
+    if (pin) {
+      setInitialJoinPin(pin);
+      setIsJoinModalOpen(true);
+    } else if (sessionId) {
+      joinSession(sessionId);
+    }
+  }, [joinSession]);
+
+  const handleSessionCreated = (sessionId: string) => {
+    setCreateModalType(null);
+    joinSession(sessionId);
+  };
+
+  const handleJoinFromPin = (sessionId: string) => {
+    setIsJoinModalOpen(false);
+    joinSession(sessionId);
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-between p-2 sm:p-4 sm:py-6 selection:bg-emerald-500 selection:text-slate-950">
+      {/* Active Communication View or Home Panel */}
+      {session ? (
+        <CommunicationScreen
+          session={session}
+          connectionState={connectionState}
+          txRxState={txRxState}
+          floor={floor}
+          participantId={participantId}
+          leaseSecondsLeft={leaseSecondsLeft}
+          micVolume={micVolume}
+          speakerMuted={speakerMuted}
+          onToggleSpeakerMute={toggleSpeakerMute}
+          soundEffects={soundEffects}
+          onToggleSoundEffects={setSoundEffects}
+          activeChannel={activeChannel}
+          onChannelChange={setActiveChannel}
+          transmissionHistory={transmissionHistory}
+          onRequestFloor={requestFloor}
+          onReleaseFloor={releaseFloor}
+          onToggleFloor={toggleFloor}
+          onLeaveSession={leaveSession}
+          onEndSession={endSession}
+          onRemoveParticipant={removeParticipant}
+          errorMessage={errorMessage}
+          onClearError={() => setErrorMessage(null)}
+          rssi={rssi}
+          getAudioFrequencyData={getAudioFrequencyData}
+          getAudioTimeDomainData={getAudioTimeDomainData}
+        />
+      ) : (
+        <HomeScreen
+          onOpenCreateOneToOne={() => setCreateModalType('one-to-one')}
+          onOpenCreateGroup={() => setCreateModalType('group')}
+          onOpenJoinPin={() => setIsJoinModalOpen(true)}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          isOnline={isOnline}
+          displayName={displayName}
+          activeChannel={activeChannel}
+          onChannelChange={setActiveChannel}
+          rssi={rssi}
+          getAudioFrequencyData={getAudioFrequencyData}
+          getAudioTimeDomainData={getAudioTimeDomainData}
+        />
+      )}
+
+      {/* Modals */}
+      {createModalType && (
+        <CreateSessionModal
+          isOpen={!!createModalType}
+          onClose={() => setCreateModalType(null)}
+          type={createModalType}
+          displayName={displayName}
+          onSessionCreated={handleSessionCreated}
+        />
+      )}
+
+      {isJoinModalOpen && (
+        <JoinModal
+          isOpen={isJoinModalOpen}
+          onClose={() => setIsJoinModalOpen(false)}
+          displayName={displayName}
+          onSaveDisplayName={setDisplayName}
+          onJoin={handleJoinFromPin}
+          initialPin={initialJoinPin}
+        />
+      )}
+
+      {isSettingsOpen && (
+        <SettingsModal
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          displayName={displayName}
+          onSaveDisplayName={setDisplayName}
+          soundEffects={soundEffects}
+          onToggleSoundEffects={setSoundEffects}
+          hapticsEnabled={hapticsEnabled}
+          onToggleHaptics={setHapticsEnabled}
+          rfFilterEnabled={rfFilterEnabled}
+          onToggleRfFilter={setRfFilterEnabled}
+          squelchTailEnabled={squelchTailEnabled}
+          onToggleSquelchTail={setSquelchTailEnabled}
+          speakerMuted={speakerMuted}
+          onToggleSpeakerMute={toggleSpeakerMute}
+        />
+      )}
+    </div>
+  );
+}
