@@ -64,8 +64,17 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Bypass WebSockets and API requests
-  if (url.pathname.startsWith('/api') || url.pathname.startsWith('/ws') || event.request.headers.get('upgrade') === 'websocket') {
+  // Bypass WebSockets, API requests, Vite dev internals, node_modules, and cache-busting modules
+  if (
+    url.pathname.startsWith('/api') ||
+    url.pathname.startsWith('/ws') ||
+    url.pathname.startsWith('/@') ||
+    url.pathname.startsWith('/node_modules') ||
+    url.pathname.startsWith('/src') ||
+    url.searchParams.has('v') ||
+    url.searchParams.has('t') ||
+    event.request.headers.get('upgrade') === 'websocket'
+  ) {
     return;
   }
 

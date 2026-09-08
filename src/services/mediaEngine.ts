@@ -38,9 +38,10 @@ const UNLOCK_EVENTS = ['pointerdown', 'keydown', 'touchend', 'click'] as const;
 /**
  * Optimizes SDP for WebRTC Opus voice codec:
  * - useinbandfec=1: In-band Forward Error Correction against mobile packet drops
- * - usedtx=1: Discontinuous Transmission saves bandwidth and power during silence
+ * - usedtx=0: Continuous transmission during active key-up (prevents speech onset clipping)
  * - ptime=20 / minptime=10: Low packetization duration for sub-50ms transmission
  * - maxaveragebitrate=32000: Studio clarity without cellular congestion
+ * - cbr=1: Constant Bit Rate for steady jitter buffers and zero lag spikes
  * - stereo=0: Mono voice channel
  */
 function tuneOpusSdp(sdp: string): string {
@@ -55,12 +56,14 @@ function tuneOpusSdp(sdp: string): string {
 
   const keyValues: [string, string][] = [
     ['useinbandfec', '1'],
-    ['usedtx', '1'],
+    ['usedtx', '0'],
     ['minptime', '10'],
     ['maxaveragebitrate', '32000'],
+    ['maxplaybackrate', '48000'],
+    ['sprop-maxcapturerate', '48000'],
     ['stereo', '0'],
     ['sprop-stereo', '0'],
-    ['cbr', '0']
+    ['cbr', '1']
   ];
 
   const fmtpRegex = new RegExp(`a=fmtp:${opusPt}\\s+(.*)`);
@@ -97,8 +100,8 @@ export class MediaEngine {
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' }
+    { urls: 'stun:stun.cloudflare.com:3478' },
+    { urls: 'stun:stun.freeswitch.org:3478' }
   ];
   private localParticipantId = '';
   private callbacks: MediaEngineCallbacks;
@@ -208,15 +211,16 @@ export class MediaEngine {
         throw new Error('Microphone mediaDevices API not available');
       }
 
-      // Studio DSP audio constraints
+      // Studio DSP audio constraints with minimal capture latency
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
           channelCount: 1,
-          sampleRate: 48000
-        },
+          sampleRate: 48000,
+          latency: { ideal: 0 }
+        } as any,
         video: false
       });
 
@@ -575,10 +579,10 @@ export class MediaEngine {
 
   public async createOrGetPeerConnection(targetParticipantId: string, shouldInitiateOffer = false): Promise<RTCPeerConnection> {
     let pc = this.peerConnections.get(targetParticipantId);
-    if (pc && pc.connectionState === 'connected') {
+    if (pc && (pc.connectionState === 'connected' || pc.iceConnectionState === 'connected')) {
       return pc;
     }
-    if (pc && pc.connectionState !== 'closed' && pc.connectionState !== 'failed' && pc.connectionState !== 'disconnected') {
+    if (pc && pc.connectionState !== 'closed' && pc.connectionState !== 'failed' && pc.iceConnectionState !== 'failed') {
       return pc;
     }
 
@@ -590,7 +594,9 @@ export class MediaEngine {
 
     pc = new RTCPeerConnection({
       iceServers: this.iceServers,
-      iceTransportPolicy: 'all'
+      iceTransportPolicy: 'all',
+      bundlePolicy: 'max-bundle',
+      rtcpMuxPolicy: 'require'
     });
 
     this.peerConnections.set(targetParticipantId, pc);
@@ -624,6 +630,12 @@ export class MediaEngine {
         const stream = new MediaStream([event.track]);
         this.buildRxChain(targetParticipantId, stream);
       }
+
+      if (event.track) {
+        event.track.onunmute = () => {
+          this.tryAudioUnlock();
+        };
+      }
     };
 
     pc.onconnectionstatechange = () => {
@@ -632,8 +644,14 @@ export class MediaEngine {
       }
     };
 
+    pc.oniceconnectionstatechange = () => {
+      if (pc?.iceConnectionState === 'failed') {
+        this.schedulePeerRecovery(targetParticipantId);
+      }
+    };
+
     pc.onnegotiationneeded = () => {
-      if (pc!.remoteDescription) {
+      if (this.canInitiateOffer(targetParticipantId) || pc?.remoteDescription) {
         void this.negotiate(targetParticipantId, pc!);
       }
     };
@@ -691,7 +709,7 @@ export class MediaEngine {
 
     window.setTimeout(() => {
       const pc = this.peerConnections.get(participantId);
-      if (!pc || pc.connectionState !== 'failed') return;
+      if (!pc || (pc.connectionState !== 'failed' && pc.iceConnectionState !== 'failed')) return;
       if (!this.localStream) return;
       console.warn(`Peer ${participantId} connection failed — triggering ICE restart`);
       try {
@@ -710,7 +728,15 @@ export class MediaEngine {
     if (signal.description) {
       const desc = new RTCSessionDescription(signal.description);
 
-      if (desc.type === 'offer' && pc.signalingState === 'have-local-offer') {
+      // W3C Perfect Negotiation: resolve glare/offer collisions
+      const isPolite = this.localParticipantId < fromParticipantId;
+      const offerCollision = desc.type === 'offer' && (pc.signalingState !== 'stable' || this.negotiating.has(fromParticipantId));
+
+      if (offerCollision) {
+        if (!isPolite) {
+          // Impolite peer ignores colliding incoming offer; local offer takes precedence
+          return;
+        }
         try {
           await pc.setLocalDescription({ type: 'rollback' });
         } catch (e) {
@@ -718,19 +744,26 @@ export class MediaEngine {
         }
       }
 
+      if (desc.type === 'answer' && pc.signalingState !== 'have-local-offer') {
+        // Redundant or late answer received in non-offer state; ignore safely
+        return;
+      }
+
       try {
         await pc.setRemoteDescription(desc);
         // Flush any queued ICE candidates that arrived before remoteDescription was set
         const queued = this.pendingIceCandidates.get(fromParticipantId);
         if (queued && queued.length > 0) {
+          this.pendingIceCandidates.delete(fromParticipantId);
           for (const cand of queued) {
             try {
-              await pc.addIceCandidate(new RTCIceCandidate(cand));
+              if (cand && (cand.candidate || cand.candidate === '')) {
+                await pc.addIceCandidate(new RTCIceCandidate(cand));
+              }
             } catch (candErr) {
               console.warn('Error applying queued ICE candidate:', candErr);
             }
           }
-          this.pendingIceCandidates.delete(fromParticipantId);
         }
       } catch (err) {
         console.warn('Error setting remote description:', err);
@@ -763,7 +796,9 @@ export class MediaEngine {
         this.pendingIceCandidates.set(fromParticipantId, queue);
       } else {
         try {
-          await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+          if (signal.candidate && (signal.candidate.candidate || signal.candidate.candidate === '')) {
+            await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+          }
         } catch (err) {
           console.warn('Error adding ICE candidate:', err);
         }

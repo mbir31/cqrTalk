@@ -537,6 +537,10 @@ export function useWalkieTalkie() {
                 )
               };
             });
+            if (isOnline && mediaEngineRef.current && targetId !== participantId) {
+              const shouldOffer = participantId > targetId;
+              mediaEngineRef.current.createOrGetPeerConnection(targetId, shouldOffer);
+            }
             break;
           }
 

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Radio, Users, User, X, Share2, Copy, Check, ArrowRight } from 'lucide-react';
 import { SessionType } from '../types';
+import { copyToClipboard } from '../utils/clipboard';
 
 interface CreateSessionModalProps {
   isOpen: boolean;
@@ -98,20 +99,22 @@ export const CreateSessionModal: React.FC<CreateSessionModalProps> = ({
 
   const inviteUrl = createdSession ? `${window.location.origin}/?pin=${createdSession.pin}&session=${createdSession.sessionId}` : '';
 
-  const handleCopyLink = () => {
+  const handleCopyLink = async () => {
     if (!inviteUrl) return;
-    navigator.clipboard.writeText(inviteUrl).then(() => {
+    const ok = await copyToClipboard(inviteUrl);
+    if (ok) {
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2000);
-    });
+    }
   };
 
-  const handleCopyPin = () => {
+  const handleCopyPin = async () => {
     if (!createdSession?.pin) return;
-    navigator.clipboard.writeText(createdSession.pin).then(() => {
+    const ok = await copyToClipboard(createdSession.pin);
+    if (ok) {
       setCopiedPin(true);
       setTimeout(() => setCopiedPin(false), 2000);
-    });
+    }
   };
 
   const handleNativeShare = async () => {

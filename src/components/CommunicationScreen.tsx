@@ -7,6 +7,8 @@ import { ParticipantSheet } from './ParticipantSheet';
 import { BiColorStatusLed } from './BiColorStatusLed';
 import { RotaryChannelSelector } from './RotaryChannelSelector';
 import { TransmissionHistoryDrawer } from './TransmissionHistoryDrawer';
+import { TacticalConfirmDialog } from './TacticalConfirmDialog';
+import { copyToClipboard } from '../utils/clipboard';
 import { SessionData, ConnectionState, TxRxState, FloorState, TransmissionRecord, RssiData, RogerBeepStyle } from '../types';
 
 interface CommunicationScreenProps {
@@ -78,23 +80,30 @@ export const CommunicationScreen: React.FC<CommunicationScreenProps> = ({
 }) => {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<'leave' | 'end' | null>(null);
 
   const isHost = session ? session.hostParticipantId === participantId : false;
   const inviteUrl = session?.pin ? `${window.location.origin}/?pin=${session.pin}` : '';
 
-  const handleShare = () => {
+  const handleShare = async () => {
     if (!inviteUrl) return;
     if (navigator.share) {
-      navigator.share({
-        title: 'cqrTalk® Walkie-Talkie',
-        text: `Tune into my cqrTalk® radio channel! PIN: ${session?.pin}`,
-        url: inviteUrl
-      }).catch(() => {});
-    } else {
-      navigator.clipboard.writeText(inviteUrl).then(() => {
-        setCopiedLink(true);
-        setTimeout(() => setCopiedLink(false), 2000);
-      });
+      try {
+        await navigator.share({
+          title: 'cqrTalk® Walkie-Talkie',
+          text: `Tune into my cqrTalk® radio channel! PIN: ${session?.pin}`,
+          url: inviteUrl
+        });
+        return;
+      } catch (err) {
+        // Fall back to clipboard if user dismissed native share sheet
+      }
+    }
+
+    const copied = await copyToClipboard(inviteUrl);
+    if (copied) {
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
     }
   };
 
@@ -308,11 +317,7 @@ export const CommunicationScreen: React.FC<CommunicationScreenProps> = ({
               <button
                 id="btn-end-session"
                 type="button"
-                onClick={() => {
-                  if (window.confirm('End this channel session for all operators?')) {
-                    onEndSession();
-                  }
-                }}
+                onClick={() => setConfirmDialog('end')}
                 className="py-2 px-2.5 rounded-lg bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-800/60 text-[11px] font-semibold uppercase transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
                 title="End channel for everyone"
               >
@@ -323,11 +328,7 @@ export const CommunicationScreen: React.FC<CommunicationScreenProps> = ({
               <button
                 id="btn-leave-session"
                 type="button"
-                onClick={() => {
-                  if (window.confirm('Leave this walkie-talkie channel?')) {
-                    onLeaveSession();
-                  }
-                }}
+                onClick={() => setConfirmDialog('leave')}
                 className="py-2 px-2.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-300 border border-slate-700 text-[11px] font-semibold uppercase transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
                 title="Disconnect from channel"
               >
@@ -357,6 +358,37 @@ export const CommunicationScreen: React.FC<CommunicationScreenProps> = ({
         onRemoveParticipant={onRemoveParticipant}
         pin={session?.pin}
         groupName={session?.groupName}
+      />
+
+      {/* Tactical Confirmation Dialog */}
+      <TacticalConfirmDialog
+        isOpen={confirmDialog === 'end'}
+        title="End Channel Session"
+        description="Are you sure you want to terminate this radio channel? All connected operators will be disconnected immediately."
+        confirmLabel="End Channel"
+        cancelLabel="Stay in Channel"
+        variant="danger"
+        icon="power"
+        onConfirm={() => {
+          setConfirmDialog(null);
+          onEndSession();
+        }}
+        onCancel={() => setConfirmDialog(null)}
+      />
+
+      <TacticalConfirmDialog
+        isOpen={confirmDialog === 'leave'}
+        title="Leave Radio Channel"
+        description="Disconnect your radio transceiver from this frequency? You can tune back in later using the channel PIN."
+        confirmLabel="Leave Channel"
+        cancelLabel="Stay Connected"
+        variant="warning"
+        icon="leave"
+        onConfirm={() => {
+          setConfirmDialog(null);
+          onLeaveSession();
+        }}
+        onCancel={() => setConfirmDialog(null)}
       />
     </div>
   );

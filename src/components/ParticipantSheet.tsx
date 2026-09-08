@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Users, Crown, X, UserMinus, Radio, Shield, Copy, Check } from 'lucide-react';
 import { Participant, FloorState } from '../types';
+import { TacticalConfirmDialog } from './TacticalConfirmDialog';
+import { copyToClipboard } from '../utils/clipboard';
 
 interface ParticipantSheetProps {
   isOpen: boolean;
@@ -25,16 +27,18 @@ export const ParticipantSheet: React.FC<ParticipantSheetProps> = ({
   pin,
   groupName
 }) => {
-  const [copiedPin, setCopiedPin] = React.useState(false);
+  const [copiedPin, setCopiedPin] = useState(false);
+  const [participantToRemove, setParticipantToRemove] = useState<Participant | null>(null);
 
   if (!isOpen) return null;
 
-  const handleCopyPin = () => {
+  const handleCopyPin = async () => {
     if (pin) {
-      navigator.clipboard.writeText(pin).then(() => {
+      const ok = await copyToClipboard(pin);
+      if (ok) {
         setCopiedPin(true);
         setTimeout(() => setCopiedPin(false), 2000);
-      });
+      }
     }
   };
 
@@ -151,13 +155,9 @@ export const ParticipantSheet: React.FC<ParticipantSheetProps> = ({
                 {isHost && !isMe && (
                   <button
                     type="button"
-                    onClick={() => {
-                      if (window.confirm(`Remove operator ${p.displayName} from this channel?`)) {
-                        onRemoveParticipant(p.participantId);
-                      }
-                    }}
+                    onClick={() => setParticipantToRemove(p)}
                     className="p-2 rounded-xl bg-rose-950/60 hover:bg-rose-900 text-rose-400 border border-rose-800/50 transition-colors cursor-pointer"
-                    title="Remove operator"
+                    title={`Remove operator ${p.displayName}`}
                   >
                     <UserMinus className="w-4 h-4" />
                   </button>
@@ -167,6 +167,24 @@ export const ParticipantSheet: React.FC<ParticipantSheetProps> = ({
           })}
         </div>
       </div>
+
+      {/* Remove Operator Tactical Confirmation Dialog */}
+      <TacticalConfirmDialog
+        isOpen={participantToRemove !== null}
+        title="Remove Operator"
+        description={`Are you sure you want to disconnect operator "${participantToRemove?.displayName}" from this channel?`}
+        confirmLabel="Remove Operator"
+        cancelLabel="Cancel"
+        variant="danger"
+        icon="user-minus"
+        onConfirm={() => {
+          if (participantToRemove) {
+            onRemoveParticipant(participantToRemove.participantId);
+            setParticipantToRemove(null);
+          }
+        }}
+        onCancel={() => setParticipantToRemove(null)}
+      />
     </div>
   );
 };

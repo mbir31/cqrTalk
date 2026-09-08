@@ -40,9 +40,13 @@ export const RotaryChannelSelector: React.FC<RotaryChannelSelectorProps> = ({
     <div
       ref={knobRef}
       onWheel={handleWheel}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        handleStep('prev');
+      }}
       className="flex flex-col items-center select-none cursor-pointer group"
       onClick={() => handleStep('next')}
-      title={`Channel Selector Knob: CH-${currentChannel.toString().padStart(2, '0')} (Click or scroll to rotate 1-16)`}
+      title={`Channel Selector Knob: CH-${currentChannel.toString().padStart(2, '0')} (Left-click to step up, Right-click or scroll down to step back)`}
     >
       {/* Rotary Knurled Metal Knob Body */}
       <div className="w-8 h-6 bg-gradient-to-r from-slate-800 via-slate-600 to-slate-800 rounded-t-md border-t border-x border-slate-500 shadow-md relative flex items-center justify-center overflow-hidden transition-transform duration-100 group-hover:brightness-110">

@@ -84,13 +84,13 @@ export class SignalingTransport {
       const wsUrl = `${protocol}//${window.location.host}/ws`;
       this.connectNative(wsUrl);
 
-      // Set a short fallback timeout: if native doesn't open in 2.5s, switch to serverless
+      // Allow realistic mobile link handshake window (4.5s) before fallback to MQTT broker
       this.fallbackTimer = window.setTimeout(() => {
         if (this.mode === 'native' && (!this.ws || this.ws.readyState !== WebSocket.OPEN)) {
           this.cleanupNative();
           this.switchToSeverless();
         }
-      }, 2500);
+      }, 4500);
     } else {
       // On static/serverless hosts like Vercel, directly connect via serverless broker
       this.switchToSeverless();

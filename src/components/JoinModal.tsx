@@ -25,9 +25,29 @@ export const JoinModal: React.FC<JoinModalProps> = ({
 
   useEffect(() => {
     if (initialPin) {
-      setPin(initialPin);
+      setPin(initialPin.replace(/\D/g, '').slice(0, 4));
     }
   }, [initialPin]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // If typing inside the operator name input, don't intercept digits
+      if (document.activeElement?.tagName === 'INPUT') return;
+      if (/^[0-9]$/.test(e.key)) {
+        e.preventDefault();
+        setPin(prev => (prev.length < 4 ? prev + e.key : prev));
+      } else if (e.key === 'Backspace') {
+        e.preventDefault();
+        setPin(prev => prev.slice(0, -1));
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 

@@ -22,6 +22,7 @@ export const AudioFrequencyVisualizer: React.FC<AudioFrequencyVisualizerProps> =
   const animFrameIdRef = useRef<number | null>(null);
   const [mode, setMode] = useState<VisualizerMode>('spectrum');
   const [peakFreqLabel, setPeakFreqLabel] = useState<string>('0.8 kHz');
+  const lastLabelRef = useRef<string>('0.8 kHz');
 
   const isTransmitting = txRxState === 'TRANSMITTING';
   const isReceiving = txRxState === 'RECEIVING';
@@ -56,9 +57,11 @@ export const AudioFrequencyVisualizer: React.FC<AudioFrequencyVisualizerProps> =
       if (!containerRef.current || !canvas) return;
       const rect = containerRef.current.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
-      canvas.width = rect.width * dpr;
-      canvas.height = height * dpr;
-      ctx.scale(dpr, dpr);
+      const displayWidth = Math.max(1, Math.floor(rect.width));
+      const displayHeight = height;
+      canvas.width = Math.floor(displayWidth * dpr);
+      canvas.height = Math.floor(displayHeight * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
 
     handleResize();
@@ -197,10 +200,14 @@ export const AudioFrequencyVisualizer: React.FC<AudioFrequencyVisualizerProps> =
           ctx.fillRect(x, Math.max(4, peakY), barWidth, 1.5);
         }
 
-        // Update peak frequency label once per second
+        // Update peak frequency label once per second if value actually changed
         if (Math.floor(t * 10) % 20 === 0 && maxVal > 0.1) {
           const freqEst = Math.round((100 + (maxIndex / barCount) * 3400) / 100) / 10;
-          setPeakFreqLabel(`${freqEst} kHz`);
+          const nextLabel = `${freqEst} kHz`;
+          if (lastLabelRef.current !== nextLabel) {
+            lastLabelRef.current = nextLabel;
+            setPeakFreqLabel(nextLabel);
+          }
         }
       }
 
